@@ -26,13 +26,24 @@ Manage shopping lists and items.
 |-----------|------|----------|-------------|
 | `action` | enum | Yes | See actions below |
 | `list_name` | string | No | Target list (defaults to configured default) |
-| `name` | string | For item actions | Item name |
-| `quantity` | number | No | Item quantity (add_item only, default 1) |
-| `notes` | string | No | Item notes (add_item only) |
+| `name` | string | For item/category actions | Item name, or category name for `*_category` actions |
+| `new_name` | string | No | New name (`update_item`, `rename_category`) |
+| `quantity` | number | No | Item quantity (`add_item`, `update_item`; default 1 on add) |
+| `notes` | string | No | Item notes (`add_item`, `update_item`) |
 | `include_checked` | boolean | No | Include checked-off items (list_items only) |
 | `include_notes` | boolean | No | Include item notes in output (list_items only) |
-| `store_name` | string | No | Filter items by store (add_items, set_item_category only) |
-| `category` | string | No | Category for item (add_item only) |
+| `store_name` | string | No | Store to assign (`add_item`, `set_item_store`; omit to clear) |
+| `category` | string | No | Category name, matched case-insensitively against the list's category sets; or a standard grocery category on lists without sets |
+| `categories` | object | No | Per-set assignment map, e.g. `{"Category Set": "Urgent", "Punchlist Areas": "Garage"}` |
+| `category_set` | string | No | Category set: grouping for `list_items`, target set for `*_category` actions |
+| `items` | array | For add_items | Bulk items: `{name, quantity?, notes?, category?, categories?, store_name?}` |
+
+**Category sets.** AnyList lists can carry multiple category sets (e.g. a
+punch list grouped by urgency AND by area). Items hold one assignment per
+set; the app groups by whichever set is active. `list_categories` shows the
+sets, `category`/`categories` assign on add or update, and `list_items`
+accepts `category_set` to pick the grouping. Assigning in one set never
+disturbs an item's assignment in another set.
 
 **Actions:**
 
@@ -43,14 +54,37 @@ Manage shopping lists and items.
 // List items on a list, grouped by category
 { "name": "shopping", "arguments": { "action": "list_items", "list_name": "Costco", "include_notes": true } }
 
+// List items grouped by a specific category set
+{ "name": "shopping", "arguments": { "action": "list_items", "list_name": "Punch List", "category_set": "Punchlist Areas" } }
+
+// Show a list's category sets and their categories
+{ "name": "shopping", "arguments": { "action": "list_categories", "list_name": "Punch List" } }
+
 // Add an item
-{ "name": "shopping", "arguments": { "action": "add_item", "name": "Eggs", "quantity": 2, "notes": "organic", "store": "Costco"} }
+{ "name": "shopping", "arguments": { "action": "add_item", "name": "Eggs", "quantity": 2, "notes": "organic", "store_name": "Costco"} }
+
+// Add an item with a category in each set
+{ "name": "shopping", "arguments": { "action": "add_item", "name": "Fix handrail", "categories": { "Category Set": "Urgent", "Punchlist Areas": "Interior" } } }
+
+// Add many items at once
+{ "name": "shopping", "arguments": { "action": "add_items", "items": [ { "name": "Fix handrail", "categories": { "Category Set": "Urgent" } }, { "name": "Clean gutters", "notes": "before winter" } ] } }
+
+// Rename / recategorize / annotate an existing item in place
+{ "name": "shopping", "arguments": { "action": "update_item", "name": "1-Urgent: Fix handrail", "new_name": "Fix handrail", "categories": { "Category Set": "Urgent" } } }
 
 // Check off an item (supports partial name matching)
 { "name": "shopping", "arguments": { "action": "check_item", "name": "Eggs" } }
 
+// Uncheck (reactivate) a completed item
+{ "name": "shopping", "arguments": { "action": "uncheck_item", "name": "Eggs" } }
+
 // Delete an item permanently
 { "name": "shopping", "arguments": { "action": "delete_item", "name": "Eggs" } }
+
+// Manage categories within a set
+{ "name": "shopping", "arguments": { "action": "create_category", "name": "Basement", "category_set": "Punchlist Areas" } }
+{ "name": "shopping", "arguments": { "action": "rename_category", "name": "Ideas", "new_name": "Someday" } }
+{ "name": "shopping", "arguments": { "action": "delete_category", "name": "Someday", "category_set": "Category Set" } }
 
 // Get favorite items for a list
 { "name": "shopping", "arguments": { "action": "get_favorites" } }
@@ -60,8 +94,6 @@ Manage shopping lists and items.
 
 // Set store for an item
 { "name": "shopping", "arguments": { "action": "set_item_store", "name": "Milk", "store_name": "Costco" } }
-
-// Set category for an item
 ```
 
 ---
