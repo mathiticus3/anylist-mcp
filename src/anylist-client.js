@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import FormData from 'form-data';
 import AnyList from '../anylist-js/lib/index.js';
 import uuid from '../anylist-js/lib/uuid.js';
@@ -17,6 +18,25 @@ export const STANDARD_CATEGORIES = ["baby","bakery","beverages","breakfast-and-c
   "grains-pasta-and-side-dishes","health-and-personal-care","household-and-cleaning",
   "meat","pet-supplies","produce","seafood","snacks-cookies-and-candy",
   "soups-and-canned-goods","wine-beer-spirits","other"];
+
+// AnyList's uuid5 namespace for a list item's per-category-group assignment
+// identifier: identifier = uuid5(categoryGroupId, NS). The official clients
+// derive it this way so every writer upserts the same assignment row for a
+// given set instead of appending duplicates — we must match or the apps'
+// next recategorize will double-up.
+const CATEGORY_ASSIGNMENT_NS = '08e5c5bdcd694454a1ffd611b6d9abc0';
+
+// RFC 4122 v5 (SHA-1) UUID, returned in AnyList's dashless-hex form.
+function uuid5hex(name, namespaceHex) {
+  const hash = createHash('sha1')
+    .update(Buffer.from(namespaceHex, 'hex'))
+    .update(name, 'utf8')
+    .digest();
+  const b = Buffer.from(hash.subarray(0, 16));
+  b[6] = (b[6] & 0x0f) | 0x50;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  return b.toString('hex');
+}
 
 // Slug used for an item's categoryMatchId when it's assigned to a custom
 // category whose systemCategory is unset (mirrors the guidance on
@@ -217,43 +237,66 @@ class AnyListClient {
 
   /**
    * Merge category assignments into an item — one per category set, replacing
-   * only the sets being (re)assigned — and push a single full-item
-   * `update-list-item` operation (per-field categoryMatchId ops create
-   * "shadow" entries the apps don't treat as real set membership).
+   * only the sets being (re)assigned — using the official clients' ops.
+   *
+   * `update-list-item` is not a handler the backend knows; it accepts the op
+   * but ignores ListItem.categoryAssignments, so assignments sent that way
+   * never persist. The apps instead send one
+   * `update-list-item-category-assignment` op per set change (full item
+   * payload, assignment identifier uuid5-derived from the group id) plus a
+   * `set-list-item-category-match-id` op to keep categoryMatchId — which the
+   * categorize handler ignores on the item payload — in step.
    */
   async _assignItemCategories(item, pairs) {
     if (pairs.length === 0) return;
 
-    const replacedGroupIds = new Set(pairs.map(p => p.group.identifier));
-    const kept = (item.categoryAssignments || []).filter(a => !replacedGroupIds.has(a.categoryGroupId));
-    item._categoryAssignments = [
-      ...kept,
-      ...pairs.map(p => ({
-        identifier: uuid(),
-        categoryGroupId: p.group.identifier,
-        categoryId: p.category.identifier,
-      })),
-    ];
-    item._categoryMatchId = this._matchIdForPairs(pairs) || item._categoryMatchId;
+    const mkOp = (handlerId) => {
+      const op = new item._protobuf.PBListOperation();
+      op.setMetadata({
+        operationId: uuid(),
+        handlerId,
+        userId: item._uid,
+      });
+      op.setListId(item._listId);
+      op.setListItemId(item._identifier);
+      op.setListItem(item._encode());
+      return op;
+    };
 
-    const op = new item._protobuf.PBListOperation();
-    op.setMetadata({
-      operationId: uuid(),
-      handlerId: 'update-list-item',
-      userId: item._uid,
-    });
-    op.setListId(item._listId);
-    op.setListItemId(item._identifier);
-    op.setListItem(item._encode());
+    const ops = [];
+    for (const p of pairs) {
+      const assignmentId = uuid5hex(p.group.identifier, CATEGORY_ASSIGNMENT_NS);
+      item._categoryAssignments = [
+        ...(item.categoryAssignments || []).filter(
+          a => a.identifier !== assignmentId && a.categoryGroupId !== p.group.identifier
+        ),
+        {
+          identifier: assignmentId,
+          categoryGroupId: p.group.identifier,
+          categoryId: p.category.identifier,
+        },
+      ];
+      ops.push(mkOp('update-list-item-category-assignment'));
+    }
+
+    const matchId = this._matchIdForPairs(pairs);
+    if (matchId) {
+      const originalCategory = item.category || 'other';
+      item._categoryMatchId = matchId;
+      item._category = STANDARD_CATEGORIES.includes(matchId) ? matchId : 'other';
+      const op = mkOp('set-list-item-category-match-id');
+      op.setOriginalValue(originalCategory);
+      ops.push(op);
+    }
 
     const opList = new item._protobuf.PBListOperationList();
-    opList.setOperations([op]);
+    opList.setOperations(ops);
     const form = new FormData();
     form.append('operations', opList.toBuffer());
     await item._client.post('data/shopping-lists/update', { body: form });
 
     // Drop any pending field-level category update so a later save() doesn't
-    // replay a stale single-field op over the full-item update.
+    // replay a stale single-field op over the assignment ops.
     item._fieldsToUpdate = item._fieldsToUpdate.filter(f => f !== 'categoryMatchId');
   }
 
