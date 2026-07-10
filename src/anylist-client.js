@@ -1,22 +1,30 @@
+import FormData from 'form-data';
 import AnyList from '../anylist-js/lib/index.js';
-import Item from '../anylist-js/lib/item.js';
+import uuid from '../anylist-js/lib/uuid.js';
 import { normalizeRecipe } from './recipe-normalizer.js';
 
-// Patch Item._encode to not include 'quantity' field which doesn't exist in protobuf schema
-Item.prototype._encode = function() {
-  return new this._protobuf.ListItem({
-    identifier: this._identifier,
-    listId: this._listId,
-    name: this._name,
-    details: this._details,
-    checked: this._checked,
-    category: this._category,
-    userId: this._userId,
-    categoryMatchId: this._categoryMatchId,
-    manualSortIndex: this._manualSortIndex,
-    storeIds: this._storeIds || [],
-  });
-};
+// NOTE: earlier versions monkey-patched Item._encode here to work around a
+// protobuf 'quantity' field error. The vendored anylist-js now encodes
+// quantityPb correctly AND includes categoryAssignments — the old patch
+// silently dropped those assignments, breaking custom-category writes, so it
+// must stay gone.
+
+// AnyList's 18 stock category match-ids, used by grocery-style lists that
+// have no custom category sets. Lists WITH category sets resolve category
+// names against the sets themselves (see _resolveCategories).
+export const STANDARD_CATEGORIES = ["baby","bakery","beverages","breakfast-and-cereal",
+  "condiments-oils-and-salad-dressings","cooking-and-baking","dairy","frozen-foods",
+  "grains-pasta-and-side-dishes","health-and-personal-care","household-and-cleaning",
+  "meat","pet-supplies","produce","seafood","snacks-cookies-and-candy",
+  "soups-and-canned-goods","wine-beer-spirits","other"];
+
+// Slug used for an item's categoryMatchId when it's assigned to a custom
+// category whose systemCategory is unset (mirrors the guidance on
+// Item.assignToCustomCategory in anylist-js).
+function categorySlug(name) {
+  const slug = String(name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return slug || 'other';
+}
 
 class AnyListClient {
   /**
@@ -104,42 +112,228 @@ class AnyListClient {
     }));
   }
 
-  // TODO: Update quantity
-  async addItem(itemName, quantity = 1, notes = null, category = "other", store = null) {
+  _requireList() {
     if (!this.targetList) {
       const error = new Error('Not connected to any list. Call connect() first.');
       console.error(error.message);
       throw error;
     }
+  }
+
+  // ===== CATEGORY SETS =====
+
+  /**
+   * The target list's category sets (AnyList "category groups"), with each
+   * set's categories and default category resolved to names.
+   */
+  getCategoryGroups() {
+    this._requireList();
+    return (this.targetList.categoryGroups || []).map(group => {
+      const categories = (group.categories || [])
+        .slice()
+        .sort((a, b) => (a.sortIndex || 0) - (b.sortIndex || 0));
+      const defaultCategory = categories.find(c => c.identifier === group.defaultCategoryId) || null;
+      return {
+        identifier: group.identifier,
+        name: group.name,
+        defaultCategory: defaultCategory ? defaultCategory.name : null,
+        categories: categories.map(c => ({ identifier: c.identifier, name: c.name })),
+      };
+    });
+  }
+
+  _findCategoryGroup(setNameOrId) {
+    const groups = this.targetList.categoryGroups || [];
+    const q = String(setNameOrId || '').trim().toLowerCase();
+    return groups.find(g =>
+      (g.name || '').trim().toLowerCase() === q || g.identifier === setNameOrId
+    ) || null;
+  }
+
+  /**
+   * Resolve a category request into concrete {group, category} pairs.
+   *
+   * @param {object} spec
+   * @param {string} [spec.category]     A category name matched case-insensitively
+   *                                     across ALL of the list's category sets
+   *                                     (first match wins), or a standard grocery
+   *                                     match-id for lists without category sets.
+   * @param {object} [spec.categories]   Explicit per-set map: { setName: categoryName }.
+   * @return {{ pairs: Array<{group: object, category: object}>, legacyMatchId: string|null }}
+   */
+  _resolveCategories({ category = null, categories = null } = {}) {
+    const groups = this.targetList.categoryGroups || [];
+    const pairs = [];
+
+    if (categories && typeof categories === 'object') {
+      for (const [setName, catName] of Object.entries(categories)) {
+        const group = this._findCategoryGroup(setName);
+        if (!group) {
+          throw new Error(`Category set "${setName}" not found on list "${this.targetList.name}". Available sets: ${groups.map(g => g.name).join(', ') || '(none)'}`);
+        }
+        const q = String(catName || '').trim().toLowerCase();
+        const cat = (group.categories || []).find(c =>
+          (c.name || '').trim().toLowerCase() === q || c.identifier === catName
+        );
+        if (!cat) {
+          throw new Error(`Category "${catName}" not found in set "${group.name}". Available: ${(group.categories || []).map(c => c.name).join(', ')}`);
+        }
+        pairs.push({ group, category: cat });
+      }
+    }
+
+    let legacyMatchId = null;
+    if (category && category !== 'other') {
+      const found = this.targetList.findCategoryByName
+        ? this.targetList.findCategoryByName(category)
+        : null;
+      if (found) {
+        if (!pairs.some(p => p.group.identifier === found.group.identifier)) {
+          pairs.push({ group: found.group, category: found.category });
+        }
+      } else if (groups.length === 0 && STANDARD_CATEGORIES.includes(category)) {
+        legacyMatchId = category;
+      } else {
+        const names = groups.length > 0
+          ? groups.flatMap(g => (g.categories || []).map(c => c.name))
+          : STANDARD_CATEGORIES;
+        throw new Error(`Category "${category}" not found on list "${this.targetList.name}". Available categories: ${names.join(', ')}`);
+      }
+    }
+
+    return { pairs, legacyMatchId };
+  }
+
+  /**
+   * categoryMatchId for a set of assignments: prefer the assignment in the
+   * list's primary (first) set since that's the default display grouping.
+   */
+  _matchIdForPairs(pairs) {
+    if (pairs.length === 0) return null;
+    const groups = this.targetList.categoryGroups || [];
+    const primary = pairs.find(p => groups[0] && p.group.identifier === groups[0].identifier) || pairs[0];
+    return primary.category.systemCategory || categorySlug(primary.category.name);
+  }
+
+  /**
+   * Merge category assignments into an item — one per category set, replacing
+   * only the sets being (re)assigned — and push a single full-item
+   * `update-list-item` operation (per-field categoryMatchId ops create
+   * "shadow" entries the apps don't treat as real set membership).
+   */
+  async _assignItemCategories(item, pairs) {
+    if (pairs.length === 0) return;
+
+    const replacedGroupIds = new Set(pairs.map(p => p.group.identifier));
+    const kept = (item.categoryAssignments || []).filter(a => !replacedGroupIds.has(a.categoryGroupId));
+    item._categoryAssignments = [
+      ...kept,
+      ...pairs.map(p => ({
+        identifier: uuid(),
+        categoryGroupId: p.group.identifier,
+        categoryId: p.category.identifier,
+      })),
+    ];
+    item._categoryMatchId = this._matchIdForPairs(pairs) || item._categoryMatchId;
+
+    const op = new item._protobuf.PBListOperation();
+    op.setMetadata({
+      operationId: uuid(),
+      handlerId: 'update-list-item',
+      userId: item._uid,
+    });
+    op.setListId(item._listId);
+    op.setListItemId(item._identifier);
+    op.setListItem(item._encode());
+
+    const opList = new item._protobuf.PBListOperationList();
+    opList.setOperations([op]);
+    const form = new FormData();
+    form.append('operations', opList.toBuffer());
+    await item._client.post('data/shopping-lists/update', { body: form });
+
+    // Drop any pending field-level category update so a later save() doesn't
+    // replay a stale single-field op over the full-item update.
+    item._fieldsToUpdate = item._fieldsToUpdate.filter(f => f !== 'categoryMatchId');
+  }
+
+  /**
+   * Create a category in one of the list's category sets (first set when
+   * category_set is omitted).
+   */
+  async createCategory(name, categorySet = null) {
+    this._requireList();
+    const group = categorySet ? this._findCategoryGroup(categorySet) : (this.targetList.categoryGroups || [])[0];
+    if (!group) {
+      throw new Error(categorySet
+        ? `Category set "${categorySet}" not found on list "${this.targetList.name}".`
+        : `List "${this.targetList.name}" has no category sets.`);
+    }
+    const maxSort = Math.max(0, ...(group.categories || []).map(c => c.sortIndex || 0));
+    return this.targetList.createCategory({ name, categoryGroupId: group.identifier, sortIndex: maxSort + 1 });
+  }
+
+  async renameCategory(name, newName, categorySet = null) {
+    this._requireList();
+    const { category } = this._resolveOneCategory(name, categorySet);
+    return this.targetList.renameCategory(category.identifier, newName);
+  }
+
+  async deleteCategory(name, categorySet = null) {
+    this._requireList();
+    const { category } = this._resolveOneCategory(name, categorySet);
+    return this.targetList.removeCategory(category.identifier);
+  }
+
+  _resolveOneCategory(name, categorySet = null) {
+    if (categorySet) {
+      const group = this._findCategoryGroup(categorySet);
+      if (!group) {
+        throw new Error(`Category set "${categorySet}" not found on list "${this.targetList.name}".`);
+      }
+      const q = String(name || '').trim().toLowerCase();
+      const category = (group.categories || []).find(c => (c.name || '').trim().toLowerCase() === q);
+      if (!category) {
+        throw new Error(`Category "${name}" not found in set "${group.name}". Available: ${(group.categories || []).map(c => c.name).join(', ')}`);
+      }
+      return { group, category };
+    }
+    const found = this.targetList.findCategoryByName(name);
+    if (!found) {
+      throw new Error(`Category "${name}" not found on list "${this.targetList.name}".`);
+    }
+    return found;
+  }
+
+  // ===== ITEMS =====
+
+  async addItem(itemName, quantity = 1, notes = null, category = "other", store = null, categories = null) {
+    this._requireList();
 
     try {
+      const { pairs, legacyMatchId } = this._resolveCategories({ category, categories });
+
       // First, check if item already exists
       const existingItem = this.targetList.getItemByName(itemName);
 
       if (existingItem) {
-        // Item exists - check if it's checked (completed)
-
+        // Item exists — uncheck if needed, update quantity/notes in place
         if (existingItem.checked) {
-          // Uncheck the item to make it active again
           existingItem.checked = false;
-          existingItem.quantity = quantity; // Update quantity if needed
-          if (notes !== null) {
-            existingItem.details = notes;
-          }
-
           console.error(`Unchecked existing item: ${existingItem.name}`);
-          existingItem.save();
         } else {
-
-          // Item already exists and is unchecked, no action needed
           console.error(`Item "${itemName}" already exists and is active`);
-          existingItem.quantity = quantity;
-          if (notes !== null) {
-            existingItem.details = notes;
-          }
-          // Category not used if item already has a category
-
-          existingItem.save();
+        }
+        existingItem.quantity = quantity;
+        if (notes !== null) {
+          existingItem.details = notes;
+        }
+        if (legacyMatchId) {
+          existingItem.categoryMatchId = legacyMatchId;
+        }
+        await existingItem.save();
+        if (pairs.length > 0) {
+          await this._assignItemCategories(existingItem, pairs);
         }
       } else {
         // Item doesn't exist, create new one
@@ -147,8 +341,8 @@ class AnyListClient {
         if (notes !== null) {
           itemOptions.details = notes;
         }
-        if (category !== "other") {
-          itemOptions.categoryMatchId = category;
+        if (legacyMatchId) {
+          itemOptions.categoryMatchId = legacyMatchId;
         }
 
         const newItem = this.client.createItem(itemOptions);
@@ -165,6 +359,10 @@ class AnyListClient {
           await newItem.save();
         }
 
+        if (pairs.length > 0) {
+          await this._assignItemCategories(newItem, pairs);
+        }
+
         console.error(`Added new item: ${newItem.name}`);
       }
 
@@ -174,6 +372,73 @@ class AnyListClient {
 
     } catch (error) {
       const wrappedError = new Error(`Failed to add item "${itemName}": ${error.message}`);
+      console.error(wrappedError.message);
+      throw wrappedError;
+    }
+  }
+
+  /**
+   * Update an existing item in place: rename, quantity, notes, and/or
+   * category assignment (per set via `categories`, or by bare category name).
+   */
+  async updateItem(itemName, { newName = null, quantity = null, notes = null, category = null, categories = null } = {}) {
+    this._requireList();
+
+    try {
+      const existingItem = this.targetList.getItemByName(itemName);
+      if (!existingItem) {
+        throw new Error(`Item "${itemName}" not found in list, so can't update it`);
+      }
+
+      const { pairs, legacyMatchId } = this._resolveCategories({ category, categories });
+
+      if (newName !== null && newName !== existingItem.name) {
+        existingItem.name = newName;
+      }
+      if (quantity !== null) {
+        existingItem.quantity = quantity;
+      }
+      if (notes !== null) {
+        existingItem.details = notes;
+      }
+      if (legacyMatchId) {
+        existingItem.categoryMatchId = legacyMatchId;
+      }
+      if (existingItem._fieldsToUpdate.length > 0) {
+        await existingItem.save();
+      }
+      if (pairs.length > 0) {
+        await this._assignItemCategories(existingItem, pairs);
+      }
+
+      console.error(`Updated item: ${existingItem.name}`);
+      return { name: existingItem.name };
+
+    } catch (error) {
+      const wrappedError = new Error(`Failed to update item "${itemName}": ${error.message}`);
+      console.error(wrappedError.message);
+      throw wrappedError;
+    }
+  }
+
+  /** Uncheck (reactivate) a checked-off item without touching anything else. */
+  async uncheckItem(itemName) {
+    this._requireList();
+
+    try {
+      const existingItem = this.targetList.getItemByName(itemName);
+      if (!existingItem) {
+        throw new Error(`Item "${itemName}" not found in list, so can't uncheck it`);
+      }
+      if (existingItem.checked) {
+        existingItem.checked = false;
+        await existingItem.save();
+        console.error(`Unchecked item: ${existingItem.name}`);
+      } else {
+        console.error(`Item "${itemName}" is already unchecked`);
+      }
+    } catch (error) {
+      const wrappedError = new Error(`Failed to uncheck item "${itemName}": ${error.message}`);
       console.error(wrappedError.message);
       throw wrappedError;
     }
@@ -237,12 +502,15 @@ class AnyListClient {
     }
   }
 
-  async getItems(includeChecked = false, includeNotes = false) {
-    if (!this.targetList) {
-      const error = new Error('Not connected to any list. Call connect() first.');
-      console.error(error.message);
-      throw error;
-    }
+  /**
+   * Items in a clean format. On lists with category sets, `category` is the
+   * item's category NAME in the chosen set (`categorySet` by name, defaulting
+   * to the list's primary set); unassigned items fall into that set's default
+   * category, exactly like the AnyList apps display them. Lists without
+   * category sets keep the legacy categoryMatchId grouping.
+   */
+  async getItems(includeChecked = false, includeNotes = false, categorySet = null) {
+    this._requireList();
 
     try {
       // Get all items from the list
@@ -253,20 +521,45 @@ class AnyListClient {
         ? items
         : items.filter(item => !item.checked);
 
+      // Pick the category set to group by
+      const groups = this.targetList.categoryGroups || [];
+      let group = null;
+      if (categorySet) {
+        group = this._findCategoryGroup(categorySet);
+        if (!group) {
+          throw new Error(`Category set "${categorySet}" not found on list "${this.targetList.name}". Available sets: ${groups.map(g => g.name).join(', ') || '(none)'}`);
+        }
+      } else if (groups.length > 0) {
+        group = groups[0];
+      }
+      const categoryNameById = group
+        ? Object.fromEntries((group.categories || []).map(c => [c.identifier, c.name]))
+        : {};
+      const defaultCategoryName = group
+        ? (categoryNameById[group.defaultCategoryId] || 'Uncategorized')
+        : null;
+
       // Map to a clean format
       return filteredItems.map(item => {
+        let category;
+        if (group) {
+          const assignment = (item.categoryAssignments || []).find(a => a.categoryGroupId === group.identifier);
+          category = (assignment && categoryNameById[assignment.categoryId]) || defaultCategoryName;
+        } else {
+          category = item.categoryMatchId || 'other';
+        }
         const result = {
           name: item.name,
           quantity: typeof item.quantity === 'number' ? item.quantity : 1,
           checked: item.checked || false,
-          category: item.categoryMatchId || 'other'
+          category
         };
         if (includeNotes && item.details) {
           result.note = item.details;
         }
-        const store = (this.targetList.stores || []).find(s => s.identifier === item.storeIds[0]);
+        const store = (this.targetList.stores || []).find(s => s.identifier === (item.storeIds || [])[0]);
         result.store = store ? store.name : null;
-        
+
         return result;
       });
     } catch (error) {
@@ -274,28 +567,6 @@ class AnyListClient {
       console.error(wrappedError.message);
       throw wrappedError;
     }
-  }
-
-  _buildCategoryMap() {
-    const categoryMap = {};
-    try {
-      // Access the raw user data from the client to get category groups
-      const userData = this.client._userData;
-      if (userData && userData.shoppingListsResponse && userData.shoppingListsResponse.categoryGroupResponses) {
-        for (const groupResponse of userData.shoppingListsResponse.categoryGroupResponses) {
-          if (groupResponse.categoryGroup && groupResponse.categoryGroup.categories) {
-            for (const category of groupResponse.categoryGroup.categories) {
-              if (category.identifier && category.name) {
-                categoryMap[category.identifier] = category.name;
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`Failed to build category map: ${error.message}`);
-    }
-    return categoryMap;
   }
 
   // ===== STORES =====

@@ -8,6 +8,8 @@
  *   Call client.reset() (or create a fresh instance) in beforeEach.
  */
 
+import { STANDARD_CATEGORIES } from '../../src/anylist-client.js';
+
 export function createMockServer() {
   const handlers = {};
   const server = {
@@ -39,6 +41,8 @@ export class MockAnyListClient {
     this._collections = [];
     this._pendingImport = null;
     this._stores = [];
+    // Category sets: [{ identifier, name, defaultCategoryId, categories: [{identifier, name}] }]
+    this._categoryGroups = [];
   }
 
   reset() {
@@ -55,6 +59,7 @@ export class MockAnyListClient {
     this._collections = [];
     this._pendingImport = null;
     this._stores = [];
+    this._categoryGroups = [];
   }
 
   async connect(listName = null) {
@@ -74,8 +79,111 @@ export class MockAnyListClient {
   getLists() { return this._lists; }
   getStores() { return this._stores || []; }
 
-  async addItem(name, qty, notes, category, store = null) {
-    this._items.push({ name, quantity: qty, notes, category, store });
+  _findGroup(nameOrId) {
+    const q = String(nameOrId || '').trim().toLowerCase();
+    return this._categoryGroups.find(g => g.name.toLowerCase() === q || g.identifier === nameOrId) || null;
+  }
+
+  getCategoryGroups() {
+    return this._categoryGroups.map(g => ({
+      identifier: g.identifier,
+      name: g.name,
+      defaultCategory: (g.categories.find(c => c.identifier === g.defaultCategoryId) || {}).name || null,
+      categories: g.categories.map(c => ({ identifier: c.identifier, name: c.name })),
+    }));
+  }
+
+  // Mirrors AnyListClient._resolveCategories semantics closely enough for tool tests.
+  _resolveCategories(category, categories) {
+    const out = {};
+    if (categories) {
+      for (const [setName, catName] of Object.entries(categories)) {
+        const g = this._findGroup(setName);
+        if (!g) throw new Error(`Category set "${setName}" not found on list "${this.targetList.name}". Available sets: ${this._categoryGroups.map(x => x.name).join(', ') || '(none)'}`);
+        const c = g.categories.find(c => c.name.toLowerCase() === String(catName).trim().toLowerCase());
+        if (!c) throw new Error(`Category "${catName}" not found in set "${g.name}". Available: ${g.categories.map(x => x.name).join(', ')}`);
+        out[g.name] = c.name;
+      }
+    }
+    let legacy = null;
+    if (category && category !== 'other') {
+      let found = null;
+      for (const g of this._categoryGroups) {
+        const c = g.categories.find(c => c.name.toLowerCase() === category.trim().toLowerCase());
+        if (c) { found = { g, c }; break; }
+      }
+      if (found) {
+        if (!(found.g.name in out)) out[found.g.name] = found.c.name;
+      } else if (this._categoryGroups.length === 0) {
+        if (!STANDARD_CATEGORIES.includes(category)) {
+          throw new Error(`Category "${category}" not found on list "${this.targetList.name}". Available categories: ${STANDARD_CATEGORIES.join(', ')}`);
+        }
+        legacy = category;
+      } else {
+        throw new Error(`Category "${category}" not found on list "${this.targetList.name}". Available categories: ${this._categoryGroups.flatMap(g => g.categories.map(c => c.name)).join(', ')}`);
+      }
+    }
+    return { assignments: out, legacy };
+  }
+
+  async addItem(name, qty, notes, category, store = null, categories = null) {
+    const { assignments, legacy } = this._resolveCategories(category, categories);
+    const existing = this._items.find(i => i.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      existing.checked = false;
+      existing.quantity = qty;
+      if (notes !== null && notes !== undefined) existing.notes = notes;
+      existing.categories = { ...(existing.categories || {}), ...assignments };
+      if (legacy) existing.category = legacy;
+      return;
+    }
+    this._items.push({ name, quantity: qty, notes, category: legacy || category, store, categories: assignments });
+  }
+
+  async updateItem(name, { newName = null, quantity = null, notes = null, category = null, categories = null } = {}) {
+    const item = this._items.find(i => i.name.toLowerCase() === name.toLowerCase());
+    if (!item) throw new Error(`Item "${name}" not found in list, so can't update it`);
+    const { assignments, legacy } = this._resolveCategories(category, categories);
+    if (newName !== null) item.name = newName;
+    if (quantity !== null) item.quantity = quantity;
+    if (notes !== null) item.notes = notes;
+    if (legacy) item.category = legacy;
+    item.categories = { ...(item.categories || {}), ...assignments };
+    return { name: item.name };
+  }
+
+  async uncheckItem(name) {
+    const item = this._items.find(i => i.name.toLowerCase() === name.toLowerCase());
+    if (!item) throw new Error(`Item "${name}" not found in list, so can't uncheck it`);
+    item.checked = false;
+  }
+
+  async createCategory(name, categorySet = null) {
+    const group = categorySet ? this._findGroup(categorySet) : this._categoryGroups[0];
+    if (!group) throw new Error(categorySet
+      ? `Category set "${categorySet}" not found on list "${this.targetList.name}".`
+      : `List "${this.targetList.name}" has no category sets.`);
+    const created = { identifier: `cat-${group.categories.length + 1}`, name };
+    group.categories.push(created);
+    return created;
+  }
+
+  async renameCategory(name, newName, categorySet = null) {
+    const groups = categorySet ? [this._findGroup(categorySet)].filter(Boolean) : this._categoryGroups;
+    for (const g of groups) {
+      const c = g.categories.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+      if (c) { c.name = newName; return c; }
+    }
+    throw new Error(`Category "${name}" not found on list "${this.targetList.name}".`);
+  }
+
+  async deleteCategory(name, categorySet = null) {
+    const groups = categorySet ? [this._findGroup(categorySet)].filter(Boolean) : this._categoryGroups;
+    for (const g of groups) {
+      const idx = g.categories.findIndex(c => c.name.toLowerCase() === name.trim().toLowerCase());
+      if (idx !== -1) { g.categories.splice(idx, 1); return; }
+    }
+    throw new Error(`Category "${name}" not found on list "${this.targetList.name}".`);
   }
 
   async removeItem(name) {
@@ -90,16 +198,28 @@ export class MockAnyListClient {
     this._items.splice(idx, 1);
   }
 
-  async getItems(includeChecked = false, includeNotes = false, includeStore = false) {
+  async getItems(includeChecked = false, includeNotes = false, categorySet = null) {
     let items = [...this._items];
     if (!includeChecked) items = items.filter(i => !i.checked);
+    let group = null;
+    if (categorySet) {
+      group = this._findGroup(categorySet);
+      if (!group) throw new Error(`Category set "${categorySet}" not found on list "${this.targetList.name}". Available sets: ${this._categoryGroups.map(g => g.name).join(', ') || '(none)'}`);
+    } else if (this._categoryGroups.length > 0) {
+      group = this._categoryGroups[0];
+    }
+    const defaultName = group
+      ? ((group.categories.find(c => c.identifier === group.defaultCategoryId) || {}).name || 'Uncategorized')
+      : null;
     return items.map(i => ({
       name: i.name,
       quantity: i.quantity || 1,
       checked: i.checked || false,
-      category: i.category || 'other',
+      category: group
+        ? ((i.categories || {})[group.name] || defaultName)
+        : (i.category || 'other'),
       ...(includeNotes && i.notes ? { note: i.notes } : {}),
-      ...(includeStore && i.store ? { store: i.store } : {}),
+      store: i.store || null,
     }));
   }
 
