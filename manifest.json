@@ -43,8 +43,7 @@
     "default_list": {
       "type": "string",
       "title": "Default Shopping List",
-      "description": "Name of the default shopping list to use",
-      "default": "Groceries",
+      "description": "Optional. Name of the shopping list that list actions use when none is given (e.g. your primary grocery list). Leave blank to require a list_name on each shopping action; recipes and meal planning work either way.",
       "required": false
     }
   },
