@@ -98,13 +98,9 @@ export function register(server, getClient) {
       const client = await getClient();
       switch (action) {
         case "list_lists": {
-          await client.connect(list_name || null);
-          const stores = client.getStores();
-          const sig = stores.map(s => s.name).join(',');
-          if (sig !== lastStoreSignature) {
-            lastStoreSignature = sig;
-            registeredTool.update({ description: buildDescription(stores) });
-          }
+          // Enumerating lists needs auth only, never a specific target list,
+          // so it must not be gated on the (optional) default list existing.
+          await client.ensureAuthenticated();
           const lists = client.getLists();
           if (lists.length === 0) return textResponse("No lists found in the account.");
           const output = lists.map(l => `- ${l.name} (${l.uncheckedCount} unchecked items)`).join("\n");

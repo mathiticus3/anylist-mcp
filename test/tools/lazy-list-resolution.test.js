@@ -4,6 +4,7 @@ import { register as registerRecipes } from '../../src/tools/recipes.js';
 import { register as registerMealPlan } from '../../src/tools/meal-plan.js';
 import { register as registerRecipeCollections } from '../../src/tools/recipe-collections.js';
 import { register as registerHealth } from '../../src/tools/health.js';
+import { register as registerShopping } from '../../src/tools/shopping.js';
 import { MockAnyListClient, createMockServer } from './helpers.js';
 
 // Regression: account-level endpoints (recipes, meal planning, recipe
@@ -35,6 +36,7 @@ describe('lazy list resolution — account-level tools do not resolve a list', (
     registerMealPlan(server, () => Promise.resolve(client));
     registerRecipeCollections(server, () => Promise.resolve(client));
     registerHealth(server, () => Promise.resolve(client));
+    registerShopping(server, () => Promise.resolve(client));
     handlers = h;
   });
 
@@ -68,6 +70,13 @@ describe('lazy list resolution — account-level tools do not resolve a list', (
     assert.equal(result.isError, undefined);
     assert.ok(result.content[0].text.includes('Successfully connected'));
     assert.ok(result.content[0].text.includes('No default list configured'));
+  });
+
+  it('shopping list_lists enumerates lists when list resolution would fail', async () => {
+    client._lists = [{ name: 'Costco List', uncheckedCount: 3 }];
+    const result = await handlers.shopping({ action: 'list_lists' });
+    assert.equal(result.isError, undefined);
+    assert.ok(result.content[0].text.includes('Costco List'));
   });
 
   it('all account-level tools authenticate (client established)', async () => {
