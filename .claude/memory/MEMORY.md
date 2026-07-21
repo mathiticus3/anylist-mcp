@@ -10,7 +10,9 @@ Read `~/.claude/CLAUDE.md`, `~/.claude/memory/memory.md`, and
 - Fork: `mathiticus3/anylist-mcp`; production is `anylist.vector72.io` on
   `vector72-2` as part of the Trilium web stack.
 - v1.7.2 was deployed and verified on 2026-07-15. Recorded suite: 94/94.
-- Current branch `fix/lazy-default-list-resolution` backs open, mergeable PR 3.
+- Current branch `fix/lazy-default-list-resolution` backs open PR 3. At the
+  final audit GitHub reported no check rollup and had not calculated merge state;
+  do not assume mergeability without re-querying.
   Functional fix/release code is based at `11d94d5`; later docs/memory commits
   may advance the PR head. It fixes blank/default-list lazy resolution and
   makes `list_lists` enumerate without prematurely resolving a target list.
