@@ -1,0 +1,18 @@
+{
+  "collection": "ms_anylist_mcp_a298d2dd",
+  "failed_files": [],
+  "indexed_chunks": 1,
+  "indexed_files": 1,
+  "last_completed_at": "2026-07-21T13:52:08.387653Z",
+  "last_started_at": "2026-07-21T13:51:52.136428Z",
+  "last_success_at": "2026-07-21T13:52:08.387653Z",
+  "milvus_uri": "~/.memsearch/milvus.db",
+  "operation": "index",
+  "paths": [
+    "/Users/matthewmaupin/Dev/anylist-mcp/.memsearch/memory"
+  ],
+  "schema_version": 1,
+  "status": "ok",
+  "total_files": 1,
+  "updated_at": "2026-07-21T13:52:08.387653Z"
+}

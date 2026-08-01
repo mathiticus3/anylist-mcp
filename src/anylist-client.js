@@ -60,10 +60,23 @@ class AnyListClient {
     this.defaultListName = defaultListName || null;
   }
 
-  async connect(listName = null) {
+  /**
+   * Authenticate with AnyList and load the account's lists. Idempotent — once
+   * logged in, later calls return the existing client without re-hitting the
+   * network.
+   *
+   * Deliberately separate from list resolution: account-level endpoints
+   * (recipes, meal planning, recipe collections) need only an authenticated
+   * client, so they must NOT be gated on a shopping-list default being present
+   * and valid. Only connect() resolves a target list.
+   *
+   * @returns {Promise<AnyList>} the authenticated client
+   */
+  async ensureAuthenticated() {
+    if (this.client) return this.client;
+
     const username = this._username || process.env.ANYLIST_USERNAME;
     const password = this._password || process.env.ANYLIST_PASSWORD;
-    const targetListName = listName || this.defaultListName || process.env.ANYLIST_LIST_NAME;
 
     if (!username || !password) {
       const error = new Error('Missing AnyList credentials. Provide username and password.');
@@ -71,52 +84,61 @@ class AnyListClient {
       throw error;
     }
 
+    try {
+      const client = new AnyList({ email: username, password });
+      console.error(`Connecting to AnyList as ${username}...`);
+      await client.login();
+      console.error('Successfully authenticated with AnyList');
+      await client.getLists();
+      // Assign only after a fully successful handshake, so a failed attempt
+      // leaves this.client null and the next call retries from scratch.
+      this.client = client;
+      return this.client;
+    } catch (error) {
+      const wrappedError = new Error(`Failed to connect to AnyList: ${error.message}`);
+      console.error(wrappedError.message);
+      throw wrappedError;
+    }
+  }
+
+  /**
+   * Authenticate (if needed) and resolve the target shopping list.
+   *
+   * The default list is resolved lazily HERE — only when an action actually
+   * needs a list and no explicit listName was passed — never at construction
+   * or on account-level endpoints. A missing or nonexistent default therefore
+   * only affects list-scoped actions invoked without a list_name, not recipes
+   * or meal planning.
+   *
+   * @param {string|null} listName Explicit list; falls back to the configured
+   *   default (defaultListName / ANYLIST_LIST_NAME) when omitted.
+   */
+  async connect(listName = null) {
+    await this.ensureAuthenticated();
+
+    const targetListName = listName || this.defaultListName || process.env.ANYLIST_LIST_NAME;
     if (!targetListName) {
       const error = new Error('No list name provided and no default list configured');
       console.error(error.message);
       throw error;
     }
 
-    // If already connected to the same list, skip reconnection
-    if (this.client && this.targetList && this.targetList.name === targetListName) {
+    // Already resolved to this list — nothing to do.
+    if (this.targetList && this.targetList.name === targetListName) {
       return true;
     }
 
-    try {
-      // Create AnyList client if not already authenticated
-      if (!this.client) {
-        this.client = new AnyList({
-          email: username,
-          password: password
-        });
+    console.error(`Looking for list: "${targetListName}"`);
+    this.targetList = this.client.getListByName(targetListName);
 
-        // Authenticate
-        console.error(`Connecting to AnyList as ${username}...`);
-        await this.client.login();
-        console.error('Successfully authenticated with AnyList');
-
-        await this.client.getLists();
-      }
-
-      // Find the target list
-      console.error(`Looking for list: "${targetListName}"`);
-      this.targetList = this.client.getListByName(targetListName);
-
-      if (!this.targetList) {
-        const error = new Error(`List "${targetListName}" not found. Available lists: ${this.getAvailableListNames().join(', ')}`);
-        console.error(error.message);
-        throw error;
-      }
-
-      console.error(`Connected to list: "${this.targetList.name}"`);
-
-      return true;
-
-    } catch (error) {
-      const wrappedError = new Error(`Failed to connect to AnyList: ${error.message}`);
-      console.error(wrappedError.message);
-      throw wrappedError;
+    if (!this.targetList) {
+      const error = new Error(`List "${targetListName}" not found. Available lists: ${this.getAvailableListNames().join(', ')}`);
+      console.error(error.message);
+      throw error;
     }
+
+    console.error(`Connected to list: "${this.targetList.name}"`);
+    return true;
   }
 
   getAvailableListNames() {

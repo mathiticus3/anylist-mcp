@@ -27,7 +27,8 @@ export function register(server, getClient) {
     const { action, date, start_date, end_date, title, recipe_id, label_id, details, event_id } = params;
     try {
       const client = await getClient();
-      await client.connect(null);
+      // Meal planning is account-level — authenticate only, never resolve a list.
+      await client.ensureAuthenticated();
       switch (action) {
         case "list_events": {
           let events = await client.getMealPlanEvents();

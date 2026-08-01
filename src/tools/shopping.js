@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { textResponse, errorResponse } from "./helpers.js";
+import { textResponse, errorResponse, structuredResponse } from "./helpers.js";
 import { createElicitationHelpers } from "./elicitation.js";
 import { STANDARD_CATEGORIES } from "../anylist-client.js";
 
@@ -98,13 +98,9 @@ export function register(server, getClient) {
       const client = await getClient();
       switch (action) {
         case "list_lists": {
-          await client.connect(list_name || null);
-          const stores = client.getStores();
-          const sig = stores.map(s => s.name).join(',');
-          if (sig !== lastStoreSignature) {
-            lastStoreSignature = sig;
-            registeredTool.update({ description: buildDescription(stores) });
-          }
+          // Enumerating lists needs auth only, never a specific target list,
+          // so it must not be gated on the (optional) default list existing.
+          await client.ensureAuthenticated();
           const lists = client.getLists();
           if (lists.length === 0) return textResponse("No lists found in the account.");
           const output = lists.map(l => `- ${l.name} (${l.uncheckedCount} unchecked items)`).join("\n");
@@ -128,9 +124,12 @@ export function register(server, getClient) {
           }
           const items = await client.getItems(include_checked || false, include_notes || false, category_set || null);
           if (items.length === 0) {
-            return textResponse(include_checked
-              ? `List "${client.targetList.name}" is empty.`
-              : `No unchecked items on list "${client.targetList.name}".`);
+            return structuredResponse(
+              include_checked
+                ? `List "${client.targetList.name}" is empty.`
+                : `No unchecked items on list "${client.targetList.name}".`,
+              { list: client.targetList.name, categorySet: null, items: [] },
+            );
           }
           const itemsByCategory = {};
           items.forEach(item => {
@@ -152,7 +151,17 @@ export function register(server, getClient) {
           const setNote = groups.length > 1
             ? `\n(grouped by "${category_set || groups[0].name}"; other sets: ${groups.filter(g => (g.name || '') !== (category_set || groups[0].name)).map(g => g.name).join(', ')})`
             : '';
-          return textResponse(`Shopping list "${client.targetList.name}" (${items.length} items):\n${itemList}${setNote}`);
+          return structuredResponse(
+            `Shopping list "${client.targetList.name}" (${items.length} items):\n${itemList}${setNote}`,
+            {
+              list: client.targetList.name,
+              categorySet: groups.length > 0 ? (category_set || groups[0].name) : null,
+              // Exactly what getItems returned: { name, quantity, checked,
+              // category, note?, store }. Grouping is presentation and stays in
+              // the prose; callers that need it can group by `category`.
+              items,
+            },
+          );
         }
         case "list_categories": {
           await client.connect(list_name || null);

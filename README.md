@@ -31,7 +31,9 @@ The fastest way to get started is to download the latest `anylist-mcp.mcpb` from
 3. Enter your configuration when prompted:
    - **AnyList Email** — your AnyList account email
    - **AnyList Password** — your AnyList account password
-   - **Default Shopping List** — optional, defaults to "Groceries"
+   - **Default Shopping List** — optional; the list that shopping actions use
+     when you don't pass one. Leave blank to require a list name per action.
+     Recipes and meal planning don't need it.
 
 ---
 
@@ -60,7 +62,7 @@ Add to your MCP config (`~/.claude/claude_desktop_config.json` or equivalent):
       "env": {
         "ANYLIST_USERNAME": "you@example.com",
         "ANYLIST_PASSWORD": "yourpassword",
-        "ANYLIST_LIST_NAME": "Groceries"
+        "ANYLIST_LIST_NAME": "My Shopping List"
       }
     }
   }
