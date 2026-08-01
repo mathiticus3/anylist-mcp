@@ -103,6 +103,39 @@ describe('shopping tool', () => {
       assert.ok(result.content[0].text.includes('Done'));
     });
 
+    it('returns structured content alongside the prose', async () => {
+      client._items.push({ name: 'Milk', category: 'Dairy' }, { name: 'Bread', category: 'Bakery' });
+      const result = await handlers.shopping({ action: 'list_items' });
+      assert.ok(result.structuredContent, 'list_items must carry structuredContent');
+      assert.equal(result.structuredContent.items.length, 2);
+      assert.deepEqual(
+        result.structuredContent.items.map(i => i.name).sort(),
+        ['Bread', 'Milk'],
+      );
+      // The prose is what conversational clients read; it must not change shape.
+      assert.ok(result.content[0].text.includes('Milk'));
+    });
+
+    it('reports checked state and notes in structured content', async () => {
+      client._items.push(
+        { name: 'Milk', checked: false, notes: '[APP-1] buy the standard size' },
+        { name: 'Done', checked: true, notes: '[PLB-3] already handled' },
+      );
+      const result = await handlers.shopping({
+        action: 'list_items', include_checked: true, include_notes: true,
+      });
+      const byName = Object.fromEntries(result.structuredContent.items.map(i => [i.name, i]));
+      assert.equal(byName.Milk.checked, false);
+      assert.equal(byName.Done.checked, true);
+      // Notes carry sync keys for downstream integrations; they must survive verbatim.
+      assert.equal(byName.Done.note, '[PLB-3] already handled');
+    });
+
+    it('returns an empty structured item list rather than nothing', async () => {
+      const result = await handlers.shopping({ action: 'list_items' });
+      assert.deepEqual(result.structuredContent.items, []);
+    });
+
     it('includes notes when requested', async () => {
       client._items.push({ name: 'Milk', notes: 'whole milk' });
       const result = await handlers.shopping({ action: 'list_items', include_notes: true });
