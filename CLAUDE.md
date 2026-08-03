@@ -1,5 +1,9 @@
 # CLAUDE.md
 
+Read `.claude/memory/MEMORY.md` before resuming this repo. Global context is in
+`~/.claude/memory/`; MemSearch is local and project-root scoped. Never put
+AnyList credentials, allowed-email values, or list contents in git or memory.
+
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
