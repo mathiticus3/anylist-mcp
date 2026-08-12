@@ -61,6 +61,14 @@ class ProductionReleaseTests(unittest.TestCase):
             self.assertTrue(content.endswith(b"\n"))
             self.assertNotIn(b"\r", content)
 
+    def test_submodule_gate_accepts_only_clean_exact_checkout(self):
+        commit = "1d3c9816c4ecfc3b2d8c5c48dd35619b125381c3"
+        clean = f"{commit} anylist-js (heads/master)"
+        self.assertTrue(deploy_anylist.submodule_is_exact(clean, commit))
+        self.assertFalse(deploy_anylist.submodule_is_exact(f"+{commit} anylist-js", commit))
+        self.assertFalse(deploy_anylist.submodule_is_exact(f"-{commit} anylist-js", commit))
+        self.assertFalse(deploy_anylist.submodule_is_exact(f"U{commit} anylist-js", commit))
+
 
 if __name__ == "__main__":
     unittest.main()

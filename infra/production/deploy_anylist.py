@@ -91,6 +91,12 @@ def git(source: Path, *args: str) -> str:
     return run(["git", "-C", str(source), *args])
 
 
+def submodule_is_exact(output: str, expected_commit: str) -> bool:
+    # run() strips the clean status's leading space. Dirty/missing/conflicted
+    # statuses retain their +, -, or U marker and therefore cannot match.
+    return output.startswith(f"{expected_commit} ")
+
+
 def compose(prod: dict, *args: str) -> list[str]:
     return ["docker", "compose", "-f", prod["compose_file"], *args]
 
@@ -226,7 +232,7 @@ def preflight(manifest: dict, spec: dict) -> dict:
     if git(source, "rev-parse", f"HEAD:{base['submodule_path']}") != base["submodule_commit"]:
         raise ReleaseError("production submodule pointer changed")
     submodule = git(source, "submodule", "status", base["submodule_path"])
-    if not submodule.startswith(f" {base['submodule_commit']} "):
+    if not submodule_is_exact(submodule, base["submodule_commit"]):
         raise ReleaseError("production submodule checkout is missing or dirty")
 
     config = json.loads(run(compose(prod, "config", "--format", "json"), cwd=cwd))
@@ -423,7 +429,7 @@ def deploy(manifest: dict, spec: dict, backup_id: str, backup_digest: str) -> No
             raise ReleaseError("candidate source checkout is not exact and clean")
         base = spec["expected_baseline"]
         submodule = git(source, "submodule", "status", base["submodule_path"])
-        if not submodule.startswith(f" {base['submodule_commit']} "):
+        if not submodule_is_exact(submodule, base["submodule_commit"]):
             raise ReleaseError("candidate submodule checkout changed")
         update_status(directory, "source_switched")
 
