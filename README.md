@@ -84,6 +84,9 @@ See **[docs/cloudflare-setup.md](docs/cloudflare-setup.md)** for the full setup 
 - Quick tunnel for development (no Cloudflare account needed)
 - Named tunnel for production (stable URL on your own domain)
 
+The Vector72 production instance uses the scoped, fail-closed release procedure
+in **[docs/production-release.md](docs/production-release.md)**.
+
 **Quick start:**
 
 ```bash

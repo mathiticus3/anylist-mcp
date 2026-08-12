@@ -9,6 +9,7 @@
     "dev": "node --watch src/server.js",
     "test:client": "node test/anylist-client/index.js",
     "test:integration": "node test/integration.js",
+    "test:release": "python -m unittest discover -s test -p production_release_test.py",
     "pack": "mcpb pack",
     "start:http": "node src/http/index.js",
     "dev:http": "node --watch src/http/index.js",

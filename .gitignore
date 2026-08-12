@@ -1,5 +1,8 @@
 # Dependencies
 /node_modules
+/dist/
+__pycache__/
+*.py[cod]
 
 # Environment variables
 .env

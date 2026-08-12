@@ -71,6 +71,9 @@ clients. Confidential clients remain an explicit operator action through
 ## Deployment prerequisites
 
 This branch must not be deployed from an untrusted workstation connection.
+Use the fail-closed, AnyList-only workflow in
+[production-release.md](production-release.md); do not run the root Compose
+stack manually for this release.
 Before changing the live service:
 
 1. Establish trusted SSH access to `vector72-2` and verify its host key through

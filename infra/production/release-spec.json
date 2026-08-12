@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "service": "anylist-mcp",
+  "expected_baseline": {
+    "branch": "release/v1.7.3",
+    "commit": "714ec5cba171af4cb18628c603d1bd36e9a0d199",
+    "origin": "https://github.com/mathiticus3/anylist-mcp.git",
+    "submodule_path": "anylist-js",
+    "submodule_commit": "1d3c9816c4ecfc3b2d8c5c48dd35619b125381c3"
+  },
+  "production": {
+    "compose_directory": "/home/deploy/web-caddy",
+    "compose_file": "/home/deploy/web-caddy/docker-compose.yml",
+    "source_directory": "/home/deploy/web-caddy/anylist-upstream",
+    "container_name": "anylist-mcp",
+    "image": "anylist-mcp:local",
+    "volume_name": "web-caddy_anylist-mcp-data",
+    "volume_target": "/data",
+    "allowlist_path": "/home/deploy/web-caddy/anylist-allowed-emails.txt",
+    "allowlist_target": "/config/allowed-emails.txt",
+    "environment_file": "/home/deploy/web-caddy/.env.anylist",
+    "local_base_url": "http://127.0.0.1:3000",
+    "public_base_url": "https://anylist.vector72.io",
+    "required_environment_keys": ["ALLOWED_EMAILS_FILE", "BASE_URL", "SERVER_SECRET_KEY", "SESSION_SECRET"]
+  }
+}
