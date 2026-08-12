@@ -1,0 +1,11 @@
+{
+  "name": "@vector72/anylist-uuid-compat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Compatibility entry point for the vendored AnyList client's uuid/v4 import",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./v4": "./v4.js"
+  }
+}

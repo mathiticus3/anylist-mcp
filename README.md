@@ -135,8 +135,8 @@ The SQLite volume and `SERVER_SECRET_KEY` must be backed up together without
 printing or storing the key in plaintext logs. See [docs/backup.md](docs/backup.md)
 for the required backup set and restore acceptance checks.
 
-See [docs/security.md](docs/security.md) for the complete boundary and the
-remaining upstream AnyList-client dependency risk.
+See [docs/security.md](docs/security.md) for the complete boundary, the
+protobufjs 8 compatibility port, and the remaining unofficial-API risk.
 
 ---
 
@@ -145,6 +145,9 @@ remaining upstream AnyList-client dependency risk.
 ```bash
 # Unit tests (mocked, no credentials needed)
 npm test
+
+# Dependency audit (production and development trees)
+npm audit
 
 # Integration tests (requires .env with real credentials)
 npm run test:integration

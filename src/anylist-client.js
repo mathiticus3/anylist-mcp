@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import FormData from 'form-data';
-import AnyList from '../anylist-js/lib/index.js';
+import AnyList from './anylist-legacy-client.cjs';
 import uuid from '../anylist-js/lib/uuid.js';
 import { normalizeRecipe } from './recipe-normalizer.js';
 

@@ -35,22 +35,29 @@ client quota is stored in SQLite and remains the durable denial-of-registration
 control. A reverse proxy may add an additional edge rate limit, but it must not
 replace the application controls.
 
-## Unresolved upstream dependency risk
+## AnyList client compatibility boundary
 
-The reverse-engineered AnyList client is pinned to the obsolete protobufjs 5
-builder API and uuid 3. `npm audit --omit=dev` reports one critical, one high,
-and one moderate production finding through that package, with no compatible
-upstream fix. The service loads a fixed bundled protobuf schema and requires
-OAuth before tool invocation, which narrows exposure but does not remove the
-runtime and supply-chain risk.
+The published `anylist` dependency was removed. The service already used its
+customized `anylist-js` submodule directly; the package existed only to bring in
+runtime dependencies and forced protobufjs 5 and uuid 3 into production.
 
-The MCP SDK was upgraded to 1.30.0 to remove known cross-client and ReDoS
-findings, and non-forced dependency updates were applied. The remaining
-AnyList-client findings require a deliberate port to a maintained protobuf API
-or replacement of the unofficial client; forcing a major protobuf override
-would break its `newBuilder()` API and is not an acceptable security fix.
+The customized client now runs on protobufjs 8.7.2 through a narrow local
+adapter. The adapter converts only the fixed bundled v5 reflection schema,
+marks it as proto2, validates schema identifiers, and implements the constructor,
+field accessor, enum, static decode, and instance `toBuffer()` behavior used by
+the client. Protocol fixtures emitted by the previous v5 runtime cover shopping
+items, list operations, recipes, and calendar operations. The legacy
+`uuid/v4` import resolves to a local compatibility package backed by Node's
+cryptographic `randomUUID()` implementation.
 
-Do not describe this service as fully hardened until that client migration is
-complete. Keep the service behind its authenticated HTTPS endpoint, retain the
-bounded Gina profile, and avoid granting broader network or filesystem access
-to the container.
+Both `npm audit` and `npm audit --omit=dev` report zero findings in the validated
+lockfile. The `tmp` override applies only to the MCPB packaging tool's dependency
+chain and is verified by the package build.
+
+The remaining risk is architectural rather than a known vulnerable dependency:
+AnyList has no official public API, so this reverse-engineered protocol can
+change without notice. Mocked tests and bidirectional protobuf wire checks do
+not replace an authenticated integration test against a disposable list before
+deployment. Keep the service behind its authenticated HTTPS endpoint, retain
+the bounded Gina profile, and do not grant the container broader network or
+filesystem access.

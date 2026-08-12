@@ -2,6 +2,7 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
+COPY compat/ ./compat/
 RUN npm ci --production
 
 # Stage 2: Runtime image
@@ -13,6 +14,7 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++
 
 COPY --from=deps /app/node_modules ./node_modules
+COPY compat/ ./compat/
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY anylist-js/ ./anylist-js/

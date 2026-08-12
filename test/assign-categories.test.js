@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'module';
 import AnyListClient from '../src/anylist-client.js';
-import AnyList from '../anylist-js/lib/index.js';
+import AnyList from '../src/anylist-legacy-client.cjs';
 
 const require = createRequire(import.meta.url);
 const Item = require('../anylist-js/lib/item.js');
