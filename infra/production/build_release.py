@@ -31,6 +31,12 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def write_checksum(path: Path, artifact: Path) -> None:
+    # sha256sum treats a CR from a Windows CRLF as part of the filename.
+    with path.open("w", encoding="ascii", newline="\n") as stream:
+        stream.write(f"{sha256(artifact)}  {artifact.name}\n")
+
+
 def require_clean_repository() -> str:
     if run("git", "status", "--porcelain=v1", "--untracked-files=all"):
         raise RuntimeError("release artifacts require a completely clean Git worktree")
@@ -91,7 +97,7 @@ def build(output: Path) -> tuple[Path, Path]:
                 add_file(archive, components[name], name)
         os.replace(partial, artifact)
 
-    digest_path.write_text(f"{sha256(artifact)}  {artifact.name}\n", encoding="ascii")
+    write_checksum(digest_path, artifact)
     return artifact, digest_path
 
 

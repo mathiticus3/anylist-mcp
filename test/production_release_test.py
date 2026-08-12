@@ -7,11 +7,15 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOY_PATH = ROOT / "infra" / "production" / "deploy_anylist.py"
+BUILD_PATH = ROOT / "infra" / "production" / "build_release.py"
 SPEC_PATH = ROOT / "infra" / "production" / "release-spec.json"
 
 spec = importlib.util.spec_from_file_location("deploy_anylist", DEPLOY_PATH)
 deploy_anylist = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(deploy_anylist)
+build_spec = importlib.util.spec_from_file_location("build_release", BUILD_PATH)
+build_release = importlib.util.module_from_spec(build_spec)
+build_spec.loader.exec_module(build_release)
 
 
 class ProductionReleaseTests(unittest.TestCase):
@@ -46,6 +50,16 @@ class ProductionReleaseTests(unittest.TestCase):
         self.assertNotIn('"down"', source)
         self.assertNotIn('systemctl', source)
         self.assertNotIn('docker", "volume", "rm', source)
+
+    def test_checksum_sidecar_is_lf_only_for_linux_sha256sum(self):
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "release.tar"
+            checksum = Path(directory) / "release.tar.sha256"
+            artifact.write_bytes(b"release")
+            build_release.write_checksum(checksum, artifact)
+            content = checksum.read_bytes()
+            self.assertTrue(content.endswith(b"\n"))
+            self.assertNotIn(b"\r", content)
 
 
 if __name__ == "__main__":
