@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import stat
 import subprocess
@@ -129,6 +130,20 @@ db.close(); process.stdout.write(JSON.stringify(result));
                             "node", "--input-type=module", "-e", code]))
     if not all(isinstance(item, int) and item >= 0 for item in value.values()):
         raise ReleaseError("invalid database metadata counts")
+    return value
+
+
+def oauth_client_columns(container_id: str) -> list[str]:
+    code = r'''
+import Database from "better-sqlite3";
+const db = new Database("/data/anylist-mcp.db", {readonly:true, fileMustExist:true});
+const columns = db.prepare("PRAGMA table_info(oauth_clients)").all().map(row => row.name);
+db.close(); process.stdout.write(JSON.stringify(columns));
+'''
+    value = json.loads(run(["docker", "exec", "-w", "/app", container_id,
+                            "node", "--input-type=module", "-e", code]))
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ReleaseError("invalid oauth_clients schema")
     return value
 
 
@@ -263,6 +278,9 @@ def preflight(manifest: dict, spec: dict) -> dict:
         raise ReleaseError("AnyList container is not running")
     container = inspect_container(prod, container_id)
     assert_container(container, prod)
+    schema = oauth_client_columns(container_id)
+    if schema != base["oauth_client_columns"]:
+        raise ReleaseError("production oauth_clients schema is not the expected baseline")
     if http_json(f"{prod['local_base_url']}/health").get("status") != "ok":
         raise ReleaseError("local AnyList health failed")
     if http_json(f"{prod['public_base_url']}/health").get("status") != "ok":
@@ -273,6 +291,7 @@ def preflight(manifest: dict, spec: dict) -> dict:
         "source": {"branch": base["branch"], "commit": base["commit"], "origin": base["origin"]},
         "container": container,
         "metadata": metadata_counts(container_id),
+        "oauth_client_columns": schema,
         "environment_file": fingerprint(env_file),
         "allowlist_file": fingerprint(allowlist),
         "compose_file": fingerprint(Path(prod["compose_file"])),
@@ -344,6 +363,71 @@ volumes:
     return value
 
 
+def migration_contract_smoke(spec: dict, candidate_tag: str, rollback_image: str) -> dict:
+    """Migrate a consistent production DB copy, then open it with the old image."""
+    prod = spec["production"]
+    volume = f"anylist-release-migration-{secrets.token_hex(8)}"
+    copy_code = r'''
+import Database from "better-sqlite3";
+const source = new Database("/source/anylist-mcp.db", {readonly:true, fileMustExist:true});
+await source.backup("/target/anylist-mcp.db");
+source.close();
+'''
+    inspect_code = r'''
+const module = await import("/app/src/http/db.js");
+const db = module.getDb();
+const columns = db.prepare("PRAGMA table_info(oauth_clients)").all().map(row => row.name);
+const counts = {
+  users:Number(db.prepare("SELECT COUNT(*) AS count FROM users").get().count),
+  credential_records:Number(db.prepare("SELECT COUNT(*) AS count FROM anylist_credentials").get().count),
+  oauth_clients:Number(db.prepare("SELECT COUNT(*) AS count FROM oauth_clients").get().count),
+  public_oauth_clients:Number(db.prepare("SELECT COUNT(*) AS count FROM oauth_clients WHERE client_secret_hash IS NULL").get().count),
+  confidential_oauth_clients:Number(db.prepare("SELECT COUNT(*) AS count FROM oauth_clients WHERE client_secret_hash IS NOT NULL").get().count),
+  oauth_tokens:Number(db.prepare("SELECT COUNT(*) AS count FROM oauth_tokens").get().count)
+};
+process.stdout.write(JSON.stringify({columns, counts}));
+'''
+    created = False
+    failure: Exception | None = None
+    try:
+        run(["docker", "volume", "create", "--label", "io.vector72.release=anylist-migration-smoke", volume])
+        created = True
+        run([
+            "docker", "run", "--rm", "--network", "none",
+            "--mount", f"type=volume,src={prod['volume_name']},dst=/source,readonly",
+            "--mount", f"type=volume,src={volume},dst=/target",
+            candidate_tag, "node", "--input-type=module", "-e", copy_code,
+        ])
+        candidate = json.loads(run([
+            "docker", "run", "--rm", "--network", "none",
+            "--mount", f"type=volume,src={volume},dst=/data",
+            candidate_tag, "node", "--input-type=module", "-e", inspect_code,
+        ]))
+        if candidate.get("columns") != spec["candidate_schema"]["oauth_client_columns"]:
+            raise ReleaseError("candidate migration did not produce the expected schema")
+        rollback = json.loads(run([
+            "docker", "run", "--rm", "--network", "none",
+            "--mount", f"type=volume,src={volume},dst=/data",
+            rollback_image, "node", "--input-type=module", "-e", inspect_code,
+        ]))
+        if rollback != candidate:
+            raise ReleaseError("rollback image is not compatible with the migrated schema")
+        return {"candidate": candidate, "rollback": rollback}
+    except Exception as exc:
+        failure = exc
+        raise
+    finally:
+        if created:
+            cleanup = subprocess.run(
+                ["docker", "volume", "rm", volume], text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            if cleanup.returncode:
+                if failure is None:
+                    raise ReleaseError("could not remove the isolated migration-smoke volume")
+                emit("warning: isolated migration-smoke volume cleanup needs attention")
+
+
 def oauth_boundary_checks(prod: dict) -> None:
     base = prod["public_base_url"]
     auth = http_json(f"{base}/.well-known/oauth-authorization-server")
@@ -389,6 +473,12 @@ def rollback(spec: dict, directory: Path, *, automatic: bool = False) -> None:
     if current["environment_sha256"] != snapshot["container"]["environment_sha256"] or current["networks"] != snapshot["container"]["networks"]:
         raise ReleaseError("container environment or network checkpoint was not restored")
     verify_unchanged_files(snapshot)
+    current_columns = oauth_client_columns(current_id)
+    allowed_schemas = [snapshot["oauth_client_columns"], spec["candidate_schema"]["oauth_client_columns"]]
+    if current_columns not in allowed_schemas or metadata_counts(current_id) != snapshot["metadata"]:
+        raise ReleaseError("database schema or metadata counts are not rollback-compatible")
+    if http_json(f"{prod['public_base_url']}/health").get("status") != "ok":
+        raise ReleaseError("public AnyList health failed after rollback")
     if service_ids(prod) != snapshot["other_service_ids"]:
         raise ReleaseError("a non-AnyList service changed during rollback")
     update_status(directory, "rolled_back", automatic=automatic)
@@ -444,6 +534,12 @@ def deploy(manifest: dict, spec: dict, backup_id: str, backup_digest: str) -> No
         if smoke["metadata"] != snapshot["metadata"]:
             raise ReleaseError("candidate observed changed account/OAuth metadata counts")
         write_json(directory / "candidate-smoke.json", smoke)
+        migration_smoke = migration_contract_smoke(
+            spec, candidate_tag, snapshot["container"]["image_id"],
+        )
+        if migration_smoke["candidate"]["counts"] != snapshot["metadata"]:
+            raise ReleaseError("isolated candidate migration changed account/OAuth metadata counts")
+        write_json(directory / "migration-smoke.json", migration_smoke)
         verify_unchanged_files(snapshot)
         if service_ids(prod) != snapshot["other_service_ids"]:
             raise ReleaseError("a non-AnyList service changed during candidate validation")
@@ -464,7 +560,11 @@ def deploy(manifest: dict, spec: dict, backup_id: str, backup_digest: str) -> No
         post_smoke = json.loads(output.splitlines()[-1])
         if post_smoke.get("ok") is not True or post_smoke.get("metadata") != snapshot["metadata"]:
             raise ReleaseError("deployed protocol smoke or metadata-count preservation failed")
+        if oauth_client_columns(current_id) != spec["candidate_schema"]["oauth_client_columns"]:
+            raise ReleaseError("deployed oauth_clients schema is not the expected candidate schema")
         oauth_boundary_checks(prod)
+        if metadata_counts(current_id) != snapshot["metadata"]:
+            raise ReleaseError("OAuth boundary checks changed account/OAuth metadata counts")
         verify_unchanged_files(snapshot)
         if service_ids(prod) != snapshot["other_service_ids"]:
             raise ReleaseError("a non-AnyList service changed during deployment")

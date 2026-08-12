@@ -62,9 +62,13 @@ The deploy operation:
 3. builds a separate candidate image;
 4. runs an authenticated, read-only AnyList protocol smoke with `/data` mounted
    read-only and emits counts/booleans only;
-5. retags the proven image and runs exactly `docker compose up -d --no-deps
+5. takes a SQLite online-backup copy into an isolated temporary volume, applies
+   the candidate's additive `oauth_clients.profile` and `oauth_clients.source`
+   migration there, and proves the exact old image can open the migrated copy
+   without changing account/OAuth counts;
+6. retags the proven image and runs exactly `docker compose up -d --no-deps
    --no-build --force-recreate anylist-mcp`;
-6. verifies health, OAuth metadata, rejected unallowlisted DCR, unauthenticated
+7. verifies health, OAuth metadata, rejected unallowlisted DCR, unauthenticated
    MCP returning 401, unchanged account/OAuth counts, existing credentials,
    environment, network, bind files, volume, and all other service IDs.
 
@@ -76,8 +80,12 @@ python3 deploy_anylist.py rollback --candidate '<full-40-character-commit>'
 
 Rollback restores the checkpointed image tag and original release branch,
 recreates only `anylist-mcp` when the runtime may have changed, and verifies the
-old image, health, mounts, protected files, volume, environment, networks, and
-other service IDs.
+old image, health, mounts, protected files, volume, environment, networks,
+metadata counts, schema compatibility, and other service IDs. If candidate
+startup completed, the two backward-compatible additive columns remain in the
+database; the isolated pre-runtime contract test proves the old image accepts
+that schema. The encrypted backup remains the disaster-recovery path if the
+database itself is ever corrupted.
 
 ## Rollback triggers
 
@@ -85,5 +93,6 @@ Rollback immediately for failed local/public health, failed authenticated
 read-only AnyList login, changed metadata counts, OAuth boundary failure,
 unexpected image/mount/environment/network identity, protected-file drift, or
 any non-AnyList service container-ID change. The workflow never restores the
-data backup automatically; that backup is for a separately reviewed disaster
-restore because this release never writes or migrates the database directly.
+data backup automatically. Candidate startup performs the documented additive
+schema migration; backup restoration is a separately reviewed disaster action,
+not part of routine runtime rollback.

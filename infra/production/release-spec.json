@@ -6,7 +6,27 @@
     "commit": "714ec5cba171af4cb18628c603d1bd36e9a0d199",
     "origin": "https://github.com/mathiticus3/anylist-mcp.git",
     "submodule_path": "anylist-js",
-    "submodule_commit": "1d3c9816c4ecfc3b2d8c5c48dd35619b125381c3"
+    "submodule_commit": "1d3c9816c4ecfc3b2d8c5c48dd35619b125381c3",
+    "oauth_client_columns": [
+      "client_id",
+      "redirect_uri",
+      "created_at",
+      "client_secret_hash",
+      "user_id",
+      "client_name"
+    ]
+  },
+  "candidate_schema": {
+    "oauth_client_columns": [
+      "client_id",
+      "redirect_uri",
+      "created_at",
+      "client_secret_hash",
+      "user_id",
+      "client_name",
+      "profile",
+      "source"
+    ]
   },
   "production": {
     "compose_directory": "/home/deploy/web-caddy",
