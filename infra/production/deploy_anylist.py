@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import hashlib
 import json
 import os
@@ -11,6 +12,7 @@ from pathlib import Path
 import re
 import secrets
 import shutil
+import ssl
 import stat
 import subprocess
 import sys
@@ -23,6 +25,20 @@ SPEC_PATH = HERE / "release-spec.json"
 BUNDLE_PATH = HERE / "source.bundle"
 COMPONENT_NAMES = {"source.bundle", "release-spec.json", "deploy_anylist.py"}
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
+RECONCILE_STATE_FILES = {
+    "snapshot.json", "status.json", "release-manifest.json", "source-before.bundle",
+    "candidate.override.yaml", "candidate-smoke.json", "migration-smoke.json",
+    "deployed-smoke.json",
+}
+NONVOLATILE_METADATA_KEYS = {
+    "users", "credential_records", "oauth_clients",
+    "public_oauth_clients", "confidential_oauth_clients",
+}
+TRANSIENT_HTTP_ERRORS = (
+    ConnectionResetError, ConnectionRefusedError, TimeoutError,
+    ConnectionAbortedError, BrokenPipeError, EOFError,
+    http.client.RemoteDisconnected, http.client.IncompleteRead, ssl.SSLEOFError,
+)
 
 
 class ReleaseError(RuntimeError):
@@ -42,6 +58,13 @@ def run(args: list[str], *, cwd: Path | None = None, input_text: str | None = No
         label = " ".join(args[:3])
         raise ReleaseError(f"command failed ({result.returncode}): {label}")
     return result.stdout.strip()
+
+
+def command_succeeds(args: list[str], *, cwd: Path | None = None) -> bool:
+    result = subprocess.run(
+        args, cwd=cwd, text=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
 
 
 def sha256(path: Path) -> str:
@@ -130,6 +153,57 @@ db.close(); process.stdout.write(JSON.stringify(result));
                             "node", "--input-type=module", "-e", code]))
     if not all(isinstance(item, int) and item >= 0 for item in value.values()):
         raise ReleaseError("invalid database metadata counts")
+    if value["oauth_clients"] != value["public_oauth_clients"] + value["confidential_oauth_clients"]:
+        raise ReleaseError("OAuth client metadata partition is inconsistent")
+    if value["credential_records"] > value["users"]:
+        raise ReleaseError("credential metadata count exceeds users")
+    return value
+
+
+def nonvolatile_metadata(value: dict) -> dict:
+    if not isinstance(value, dict) or any(
+        not isinstance(value.get(key), int) or value[key] < 0
+        for key in NONVOLATILE_METADATA_KEYS
+    ):
+        raise ReleaseError("invalid nonvolatile metadata counts")
+    return {key: value[key] for key in sorted(NONVOLATILE_METADATA_KEYS)}
+
+
+def assert_metadata_compatible(before: dict, after: dict) -> None:
+    if nonvolatile_metadata(after) != nonvolatile_metadata(before):
+        raise ReleaseError("nonvolatile account/OAuth metadata changed")
+
+
+def database_integrity(container_id: str) -> dict:
+    code = r'''
+import Database from "better-sqlite3";
+const db = new Database("/data/anylist-mcp.db", {readonly:true, fileMustExist:true});
+const scalar = sql => db.prepare(sql).get();
+const quick = db.pragma("quick_check", {simple:true});
+const invalidTokens = Number(scalar(`SELECT COUNT(*) AS count FROM oauth_tokens t
+  LEFT JOIN users u ON u.id=t.user_id LEFT JOIN oauth_clients c ON c.client_id=t.client_id
+  WHERE u.id IS NULL OR c.client_id IS NULL
+    OR length(t.access_token)!=64 OR t.access_token GLOB '*[^0-9a-f]*'
+    OR length(t.refresh_token)!=64 OR t.refresh_token GLOB '*[^0-9a-f]*'
+    OR typeof(t.created_at)!='integer' OR t.created_at<0
+    OR typeof(t.expires_at)!='integer' OR typeof(t.refresh_expires_at)!='integer'
+    OR t.created_at>t.expires_at OR t.expires_at>t.refresh_expires_at`).count);
+const duplicateAccess = Number(scalar(`SELECT COUNT(*) AS count FROM
+  (SELECT access_token FROM oauth_tokens GROUP BY access_token HAVING COUNT(*)>1)`).count);
+const duplicateRefresh = Number(scalar(`SELECT COUNT(*) AS count FROM
+  (SELECT refresh_token FROM oauth_tokens GROUP BY refresh_token HAVING COUNT(*)>1)`).count);
+const tokenCount = Number(scalar("SELECT COUNT(*) AS count FROM oauth_tokens").count);
+db.close(); process.stdout.write(JSON.stringify({quick_check:quick, invalid_tokens:invalidTokens,
+  duplicate_access_tokens:duplicateAccess, duplicate_refresh_tokens:duplicateRefresh,
+  oauth_tokens:tokenCount}));
+'''
+    value = json.loads(run(["docker", "exec", "-w", "/app", container_id,
+                            "node", "--input-type=module", "-e", code]))
+    expected_zero = ("invalid_tokens", "duplicate_access_tokens", "duplicate_refresh_tokens")
+    if value.get("quick_check") != "ok" or any(value.get(key) != 0 for key in expected_zero):
+        raise ReleaseError("database or OAuth-token integrity check failed")
+    if not isinstance(value.get("oauth_tokens"), int) or value["oauth_tokens"] < 0:
+        raise ReleaseError("invalid OAuth-token count")
     return value
 
 
@@ -147,14 +221,45 @@ db.close(); process.stdout.write(JSON.stringify(columns));
     return value
 
 
+def allowed_oauth_client_schemas(spec: dict) -> list[list[str]]:
+    return [
+        spec["expected_baseline"]["oauth_client_columns"],
+        spec["candidate_schema"]["oauth_client_columns"],
+    ]
+
+
 def http_json(url: str) -> dict:
     try:
         with request.urlopen(url, timeout=10) as response:
             if response.status != 200:
                 raise ReleaseError(f"unexpected HTTP status at {url}")
             return json.loads(response.read())
-    except (error.URLError, json.JSONDecodeError) as exc:
+    except (error.URLError, json.JSONDecodeError, *TRANSIENT_HTTP_ERRORS) as exc:
         raise ReleaseError(f"HTTP JSON check failed at {url}") from exc
+
+
+def transient_transport_error(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    while current is not None:
+        if isinstance(current, TRANSIENT_HTTP_ERRORS):
+            return True
+        if isinstance(current, error.URLError) and isinstance(current.reason, TRANSIENT_HTTP_ERRORS):
+            return True
+        current = current.__cause__
+    return False
+
+
+def wait_for_public_health(base_url: str, timeout_seconds: int = 90) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        try:
+            if http_json(f"{base_url}/health").get("status") != "ok":
+                raise ReleaseError("public AnyList health payload is not ok")
+            return
+        except ReleaseError as exc:
+            if not transient_transport_error(exc) or time.monotonic() >= deadline:
+                raise
+        time.sleep(2)
 
 
 def http_status(url: str, payload: dict) -> int:
@@ -279,8 +384,8 @@ def preflight(manifest: dict, spec: dict) -> dict:
     container = inspect_container(prod, container_id)
     assert_container(container, prod)
     schema = oauth_client_columns(container_id)
-    if schema != base["oauth_client_columns"]:
-        raise ReleaseError("production oauth_clients schema is not the expected baseline")
+    if schema not in allowed_oauth_client_schemas(spec):
+        raise ReleaseError("production oauth_clients schema is not an approved release schema")
     if http_json(f"{prod['local_base_url']}/health").get("status") != "ok":
         raise ReleaseError("local AnyList health failed")
     if http_json(f"{prod['public_base_url']}/health").get("status") != "ok":
@@ -291,6 +396,7 @@ def preflight(manifest: dict, spec: dict) -> dict:
         "source": {"branch": base["branch"], "commit": base["commit"], "origin": base["origin"]},
         "container": container,
         "metadata": metadata_counts(container_id),
+        "database_integrity": database_integrity(container_id),
         "oauth_client_columns": schema,
         "environment_file": fingerprint(env_file),
         "allowlist_file": fingerprint(allowlist),
@@ -302,6 +408,10 @@ def preflight(manifest: dict, spec: dict) -> dict:
 
 def state_root(candidate: str) -> Path:
     return Path.home() / ".local" / "state" / "anylist-mcp" / "releases" / candidate
+
+
+def incident_report_path(candidate: str) -> Path:
+    return Path.home() / ".local" / "state" / "anylist-mcp" / "incidents" / f"{candidate}.json"
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -323,6 +433,179 @@ def verify_unchanged_files(snapshot: dict) -> None:
         current = fingerprint(Path(snapshot[key]["path"]))
         if current != snapshot[key]:
             raise ReleaseError(f"protected deployment file changed: {key}")
+
+
+def image_snapshot(reference: str) -> dict:
+    raw = json.loads(run(["docker", "image", "inspect", reference]))[0]
+    return {
+        "id": raw["Id"],
+        "tags": sorted(raw.get("RepoTags") or []),
+        "release_commit": (raw.get("Config", {}).get("Labels") or {}).get(
+            "io.vector72.release.commit"
+        ),
+    }
+
+
+def reconcile_state_files(directory: Path) -> list[Path]:
+    if not directory.is_dir() or directory.is_symlink():
+        raise ReleaseError("release state directory is missing or unsafe")
+    files = list(directory.iterdir())
+    if any(path.is_symlink() or not path.is_file() for path in files):
+        raise ReleaseError("release state contains a symlink or non-file entry")
+    names = {path.name for path in files}
+    required = {"snapshot.json", "status.json", "release-manifest.json", "source-before.bundle"}
+    if not required.issubset(names) or not names.issubset(RECONCILE_STATE_FILES):
+        raise ReleaseError("release state file set is not recognized")
+    return sorted(files, key=lambda path: path.name)
+
+
+def reconcile_rollback(spec: dict, candidate: str, *, execute: bool = False) -> dict:
+    """Certify an already-restored incident, then optionally remove exact residue."""
+    directory = state_root(candidate)
+    expected_directory = (
+        Path.home() / ".local" / "state" / "anylist-mcp" / "releases" / candidate
+    )
+    if directory != expected_directory or directory.name != candidate:
+        raise ReleaseError("release state path is not exact")
+    files = reconcile_state_files(directory)
+    snapshot = load_json(directory / "snapshot.json")
+    status = load_json(directory / "status.json")
+    state_manifest = load_json(directory / "release-manifest.json")
+    if snapshot.get("candidate_commit") != candidate or status.get("candidate") != candidate:
+        raise ReleaseError("incident candidate identity is inconsistent")
+    if state_manifest.get("candidate_commit") != candidate:
+        raise ReleaseError("incident release manifest identity is inconsistent")
+    if status.get("phase") not in {"verification_failed", "rolled_back"}:
+        raise ReleaseError("incident is not in a reconcilable rollback phase")
+
+    prod = spec["production"]
+    baseline = spec["expected_baseline"]
+    source = Path(prod["source_directory"])
+    cwd = Path(prod["compose_directory"])
+    if snapshot.get("source") != {
+        "branch": baseline["branch"], "commit": baseline["commit"], "origin": baseline["origin"],
+    }:
+        raise ReleaseError("source checkpoint does not match the release specification")
+    protected_paths = {
+        "environment_file": prod["environment_file"],
+        "allowlist_file": prod["allowlist_path"],
+        "compose_file": prod["compose_file"],
+    }
+    if any(snapshot.get(key, {}).get("path") != value for key, value in protected_paths.items()):
+        raise ReleaseError("protected-file checkpoint paths are not exact")
+    before_status = git(source, "status", "--porcelain=v1", "--untracked-files=all")
+    if before_status or git(source, "rev-parse", "HEAD") != snapshot["source"]["commit"]:
+        raise ReleaseError("source is not at the clean rollback checkpoint")
+    if git(source, "symbolic-ref", "--short", "HEAD") != snapshot["source"]["branch"]:
+        raise ReleaseError("source rollback branch is not exact")
+    if git(source, "remote", "get-url", "origin") != snapshot["source"]["origin"]:
+        raise ReleaseError("source rollback origin is not exact")
+
+    current_id = run(compose(prod, "ps", "-q", "anylist-mcp"), cwd=cwd)
+    current = inspect_container(prod, current_id)
+    assert_container(current, prod, expected_image_id=snapshot["container"]["image_id"])
+    if current["mounts"] != snapshot["container"]["mounts"]:
+        raise ReleaseError("runtime mounts differ from rollback checkpoint")
+    if (current["environment_sha256"] != snapshot["container"]["environment_sha256"] or
+            current["networks"] != snapshot["container"]["networks"]):
+        raise ReleaseError("runtime environment or networks differ from rollback checkpoint")
+    verify_unchanged_files(snapshot)
+    if service_ids(prod) != snapshot["other_service_ids"] or len(snapshot["other_service_ids"]) != 5:
+        raise ReleaseError("peer service IDs differ from the five-service checkpoint")
+    current_columns = oauth_client_columns(current_id)
+    allowed_schemas = allowed_oauth_client_schemas(spec)
+    if current_columns not in allowed_schemas:
+        raise ReleaseError("database schema is not rollback-compatible")
+    current_metadata = metadata_counts(current_id)
+    assert_metadata_compatible(snapshot["metadata"], current_metadata)
+    integrity = database_integrity(current_id)
+    if http_json(f"{prod['local_base_url']}/health").get("status") != "ok":
+        raise ReleaseError("local AnyList health failed during reconciliation")
+    wait_for_public_health(prod["public_base_url"])
+
+    candidate_tag = f"anylist-mcp:candidate-{candidate[:12]}"
+    rollback_tag = f"anylist-mcp:rollback-{candidate[:12]}"
+    if status.get("rollback_tag") != rollback_tag:
+        raise ReleaseError("rollback tag identity is inconsistent")
+    candidate_image = image_snapshot(candidate_tag)
+    rollback_image = image_snapshot(rollback_tag)
+    if candidate_image["id"] != status.get("candidate_image"):
+        raise ReleaseError("candidate tag does not reference the checkpointed candidate image")
+    if candidate_image["release_commit"] != candidate or candidate_image["tags"] != [candidate_tag]:
+        raise ReleaseError("candidate image label or tag set is not exact")
+    if rollback_image["id"] != snapshot["container"]["image_id"]:
+        raise ReleaseError("rollback tag does not reference the original image")
+    if image_snapshot(prod["image"])["id"] != snapshot["container"]["image_id"]:
+        raise ReleaseError("production image tag is not restored")
+    referencing = run([
+        "docker", "ps", "-aq", "--filter", f"ancestor={candidate_image['id']}",
+    ]).splitlines()
+    if referencing:
+        raise ReleaseError("a container still references the candidate image")
+    release_ref = f"refs/anylist-releases/{candidate}"
+    if git(source, "rev-parse", "--verify", release_ref) != candidate:
+        raise ReleaseError("release Git ref is not exact")
+    run(["git", "-C", str(source), "bundle", "verify", str(directory / "source-before.bundle")])
+    if snapshot["source"]["commit"] not in run([
+        "git", "bundle", "list-heads", str(directory / "source-before.bundle"),
+    ]):
+        raise ReleaseError("source checkpoint bundle does not advertise the baseline commit")
+
+    proof = {
+        "schema_version": 1,
+        "candidate_commit": candidate,
+        "checked_at": int(time.time()),
+        "source_commit": snapshot["source"]["commit"],
+        "runtime_image": current["image_id"],
+        "container_healthy": current["health"] == "healthy",
+        "volume_name": prod["volume_name"],
+        "peer_service_count": len(snapshot["other_service_ids"]),
+        "nonvolatile_metadata": nonvolatile_metadata(current_metadata),
+        "oauth_tokens_observed": current_metadata["oauth_tokens"],
+        "database_integrity": integrity,
+        "state_files": {path.name: sha256(path) for path in files},
+        "planned_removals": {
+            "candidate_tag": candidate_tag,
+            "candidate_image": candidate_image["id"],
+            "rollback_tag": rollback_tag,
+            "release_ref": release_ref,
+            "state_directory": str(directory),
+        },
+        "executed": False,
+    }
+    if not execute:
+        return proof
+
+    report = incident_report_path(candidate)
+    if report.exists() or report.is_symlink():
+        raise ReleaseError(f"incident report already exists: {report}")
+    if report.parent.exists() and (not report.parent.is_dir() or report.parent.is_symlink()):
+        raise ReleaseError("incident report directory is unsafe")
+    report.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+    os.chmod(report.parent, 0o700)
+    write_json(report, proof)
+    run(["docker", "image", "rm", candidate_tag])
+    run(["docker", "image", "rm", rollback_tag])
+    git(source, "update-ref", "-d", release_ref, candidate)
+    for path in files:
+        path.unlink()
+    directory.rmdir()
+    if command_succeeds(["docker", "image", "inspect", candidate_tag]) or command_succeeds([
+        "docker", "image", "inspect", candidate_image["id"],
+    ]):
+        raise ReleaseError("candidate image residue remains after reconciliation")
+    if command_succeeds(["docker", "image", "inspect", rollback_tag]):
+        raise ReleaseError("rollback tag remains after reconciliation")
+    if command_succeeds(["git", "-C", str(source), "show-ref", "--verify", release_ref]):
+        raise ReleaseError("release Git ref remains after reconciliation")
+    if directory.exists() or directory.is_symlink():
+        raise ReleaseError("active release state remains after reconciliation")
+    if image_snapshot(prod["image"])["id"] != snapshot["container"]["image_id"]:
+        raise ReleaseError("production image changed during reconciliation")
+    proof.update({"executed": True, "completed_at": int(time.time()), "report": str(report)})
+    write_json(report, proof)
+    emit(f"rollback incident reconciled; report: {report}")
+    return proof
 
 
 def candidate_smoke(prod: dict, candidate_tag: str, directory: Path) -> dict:
@@ -474,11 +757,12 @@ def rollback(spec: dict, directory: Path, *, automatic: bool = False) -> None:
         raise ReleaseError("container environment or network checkpoint was not restored")
     verify_unchanged_files(snapshot)
     current_columns = oauth_client_columns(current_id)
-    allowed_schemas = [snapshot["oauth_client_columns"], spec["candidate_schema"]["oauth_client_columns"]]
-    if current_columns not in allowed_schemas or metadata_counts(current_id) != snapshot["metadata"]:
-        raise ReleaseError("database schema or metadata counts are not rollback-compatible")
-    if http_json(f"{prod['public_base_url']}/health").get("status") != "ok":
-        raise ReleaseError("public AnyList health failed after rollback")
+    allowed_schemas = allowed_oauth_client_schemas(spec)
+    if current_columns not in allowed_schemas:
+        raise ReleaseError("database schema is not rollback-compatible")
+    assert_metadata_compatible(snapshot["metadata"], metadata_counts(current_id))
+    database_integrity(current_id)
+    wait_for_public_health(prod["public_base_url"])
     if service_ids(prod) != snapshot["other_service_ids"]:
         raise ReleaseError("a non-AnyList service changed during rollback")
     update_status(directory, "rolled_back", automatic=automatic)
@@ -531,13 +815,13 @@ def deploy(manifest: dict, spec: dict, backup_id: str, backup_digest: str) -> No
 
         emit("running read-only authenticated AnyList protocol smoke")
         smoke = candidate_smoke(prod, candidate_tag, directory)
-        if smoke["metadata"] != snapshot["metadata"]:
+        if nonvolatile_metadata(smoke["metadata"]) != nonvolatile_metadata(snapshot["metadata"]):
             raise ReleaseError("candidate observed changed account/OAuth metadata counts")
         write_json(directory / "candidate-smoke.json", smoke)
         migration_smoke = migration_contract_smoke(
             spec, candidate_tag, snapshot["container"]["image_id"],
         )
-        if migration_smoke["candidate"]["counts"] != snapshot["metadata"]:
+        if nonvolatile_metadata(migration_smoke["candidate"]["counts"]) != nonvolatile_metadata(snapshot["metadata"]):
             raise ReleaseError("isolated candidate migration changed account/OAuth metadata counts")
         write_json(directory / "migration-smoke.json", migration_smoke)
         verify_unchanged_files(snapshot)
@@ -550,6 +834,7 @@ def deploy(manifest: dict, spec: dict, backup_id: str, backup_digest: str) -> No
         emit("recreating only the AnyList service")
         run(compose(prod, "up", "-d", "--no-deps", "--no-build", "--force-recreate", "anylist-mcp"), cwd=cwd)
         wait_for_health(prod["local_base_url"])
+        wait_for_public_health(prod["public_base_url"])
 
         current_id = run(compose(prod, "ps", "-q", "anylist-mcp"), cwd=cwd)
         current = inspect_container(prod, current_id)
@@ -558,13 +843,15 @@ def deploy(manifest: dict, spec: dict, backup_id: str, backup_digest: str) -> No
             raise ReleaseError("deployed container environment or networks changed")
         output = run(["docker", "exec", current_id, "node", "/app/scripts/read-only-production-smoke.js"])
         post_smoke = json.loads(output.splitlines()[-1])
-        if post_smoke.get("ok") is not True or post_smoke.get("metadata") != snapshot["metadata"]:
+        if post_smoke.get("ok") is not True:
             raise ReleaseError("deployed protocol smoke or metadata-count preservation failed")
+        assert_metadata_compatible(snapshot["metadata"], post_smoke["metadata"])
         if oauth_client_columns(current_id) != spec["candidate_schema"]["oauth_client_columns"]:
             raise ReleaseError("deployed oauth_clients schema is not the expected candidate schema")
         oauth_boundary_checks(prod)
-        if metadata_counts(current_id) != snapshot["metadata"]:
+        if nonvolatile_metadata(metadata_counts(current_id)) != nonvolatile_metadata(snapshot["metadata"]):
             raise ReleaseError("OAuth boundary checks changed account/OAuth metadata counts")
+        database_integrity(current_id)
         verify_unchanged_files(snapshot)
         if service_ids(prod) != snapshot["other_service_ids"]:
             raise ReleaseError("a non-AnyList service changed during deployment")
@@ -590,6 +877,12 @@ def main() -> int:
     deploy_parser.add_argument("--backup-sha256", required=True)
     rollback_parser = sub.add_parser("rollback")
     rollback_parser.add_argument("--candidate", required=True)
+    reconcile_parser = sub.add_parser("reconcile-rollback")
+    reconcile_parser.add_argument("--candidate", required=True)
+    reconcile_parser.add_argument(
+        "--execute", action="store_true",
+        help="perform the exact cleanup after all read-only proofs pass; default is dry-run",
+    )
     args = parser.parse_args()
 
     try:
@@ -605,12 +898,27 @@ def main() -> int:
             }, sort_keys=True))
         elif args.command == "deploy":
             deploy(manifest, spec, args.backup_id, args.backup_sha256)
-        else:
+        elif args.command == "rollback":
             if not HEX40.fullmatch(args.candidate):
                 raise ReleaseError("candidate must be an exact commit")
             if args.candidate != manifest["candidate_commit"]:
                 raise ReleaseError("rollback candidate does not match this artifact")
             rollback(spec, state_root(args.candidate))
+        else:
+            if not HEX40.fullmatch(args.candidate):
+                raise ReleaseError("candidate must be an exact commit")
+            proof = reconcile_rollback(spec, args.candidate, execute=args.execute)
+            print(json.dumps({
+                "ok": True,
+                "candidate_commit": args.candidate,
+                "dry_run": not args.execute,
+                "container_healthy": proof["container_healthy"],
+                "peer_service_count": proof["peer_service_count"],
+                "nonvolatile_metadata": proof["nonvolatile_metadata"],
+                "oauth_tokens_observed": proof["oauth_tokens_observed"],
+                "planned_removals": proof["planned_removals"],
+                "executed": proof["executed"],
+            }, sort_keys=True))
         return 0
     except (ReleaseError, OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"[anylist-release] ERROR: {exc}", file=sys.stderr)

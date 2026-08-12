@@ -10,6 +10,10 @@ recorded baseline, the current container is healthy, and its image, mounts,
 environment digest, network membership, volume identity, and protected files
 match the release specification. It records a sanitized container/source/image
 checkpoint under `~/.local/state/anylist-mcp/releases/<candidate>`.
+The database schema may be either the recorded pre-migration schema or the exact
+backward-compatible post-migration schema; any third shape fails closed. This
+allows a later release after a runtime rollback that retained the two additive
+columns.
 
 ## Build and transfer
 
@@ -69,8 +73,15 @@ The deploy operation:
 6. retags the proven image and runs exactly `docker compose up -d --no-deps
    --no-build --force-recreate anylist-mcp`;
 7. verifies health, OAuth metadata, rejected unallowlisted DCR, unauthenticated
-   MCP returning 401, unchanged account/OAuth counts, existing credentials,
-   environment, network, bind files, volume, and all other service IDs.
+   MCP returning 401, unchanged users/credentials/client counts, OAuth-token
+   row integrity, existing credentials, environment, network, bind files,
+   volume, and all other service IDs. Token row count may change while clients
+   refresh or authorize; it is observed but is not an equality gate.
+
+The post-recreation public health check retries only transient connection reset,
+refused, timeout, broken-pipe, and remote-EOF failures within the same bounded
+90-second window. An HTTP error, malformed JSON, or non-`ok` health payload
+fails immediately.
 
 Any failure triggers rollback. A terminal interruption can be recovered with:
 
@@ -86,6 +97,34 @@ startup completed, the two backward-compatible additive columns remain in the
 database; the isolated pre-runtime contract test proves the old image accepts
 that schema. The encrypted backup remains the disaster-recovery path if the
 database itself is ever corrupted.
+
+## Reconcile a restored rollback incident
+
+`reconcile-rollback` does not roll back or recreate a service. Its default is a
+read-only dry run for an incident whose original runtime has already been
+restored:
+
+```bash
+python3 deploy_anylist.py reconcile-rollback \
+  --candidate '<full-40-character-incident-commit>'
+```
+
+It fails closed unless the source commit/branch/origin, original image,
+container health, volume and mounts, environment digest, networks, protected
+file fingerprints, all five peer container IDs, compatible schema, exact
+nonvolatile account/OAuth counts, SQLite quick check, OAuth-token referential
+and expiry integrity, and local/public health all match the checkpoint. It also
+requires exact release-owned candidate and rollback tags, candidate image ID
+and release label, Git release ref, and known state-file set. It never displays
+environment values or token material.
+
+After independent review of the dry-run JSON, cleanup requires the explicit
+`--execute` flag. It writes a mode-600 sanitized incident report, removes only
+the exact unreferenced release-labeled candidate image/tag, removes only the
+rollback alias (never the live original image), compare-and-deletes the exact
+Git release ref, and unlinks only the recognized files in the exact incident
+state directory. It does not touch source checkout contents, the database,
+volume, Compose services, Caddy, or peer services.
 
 ## Rollback triggers
 

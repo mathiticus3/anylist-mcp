@@ -1,4 +1,5 @@
 import importlib.util
+import inspect
 import json
 import os
 from pathlib import Path
@@ -6,6 +7,7 @@ import sqlite3
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -103,6 +105,15 @@ process.stdout.write(JSON.stringify({columns,count}));
             self.assertEqual(rollback_result["columns"], candidate_result["columns"])
             self.assertEqual(rollback_result["count"], candidate_result["count"] + 1)
 
+    def test_preflight_schema_allowlist_is_exact(self):
+        release = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
+        allowed = deploy_anylist.allowed_oauth_client_schemas(release)
+        self.assertEqual(allowed, [
+            release["expected_baseline"]["oauth_client_columns"],
+            release["candidate_schema"]["oauth_client_columns"],
+        ])
+        self.assertNotIn(allowed[-1] + ["unexpected"], allowed)
+
     def test_compose_mutation_is_service_scoped(self):
         prod = {"compose_file": "/srv/docker-compose.yml"}
         command = deploy_anylist.compose(
@@ -112,6 +123,64 @@ process.stdout.write(JSON.stringify({columns,count}));
         self.assertIn("--no-deps", command)
         self.assertIn("--no-build", command)
         self.assertNotIn("down", command)
+
+    def test_concurrent_token_issuance_does_not_mask_identity_drift(self):
+        baseline = {
+            "users": 1, "credential_records": 1, "oauth_clients": 6,
+            "public_oauth_clients": 4, "confidential_oauth_clients": 2,
+            "oauth_tokens": 2572,
+        }
+        concurrent_refresh = {**baseline, "oauth_tokens": 2573}
+        deploy_anylist.assert_metadata_compatible(baseline, concurrent_refresh)
+        with self.assertRaises(deploy_anylist.ReleaseError):
+            deploy_anylist.assert_metadata_compatible(
+                baseline, {**concurrent_refresh, "oauth_clients": 7, "public_oauth_clients": 5},
+            )
+
+    def test_public_health_retries_transient_reset_then_succeeds(self):
+        transient = deploy_anylist.ReleaseError("transport reset")
+        transient.__cause__ = ConnectionResetError("peer reset")
+        with patch.object(
+            deploy_anylist, "http_json", side_effect=[transient, transient, {"status": "ok"}],
+        ) as health, patch.object(deploy_anylist.time, "monotonic", side_effect=[0, 1, 2]), \
+                patch.object(deploy_anylist.time, "sleep") as sleep:
+            deploy_anylist.wait_for_public_health("https://anylist.example", timeout_seconds=10)
+        self.assertEqual(health.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
+
+    def test_public_health_does_not_retry_bad_payload(self):
+        with patch.object(deploy_anylist, "http_json", return_value={"status": "wrong"}) as health, \
+                patch.object(deploy_anylist.time, "monotonic", return_value=0), \
+                patch.object(deploy_anylist.time, "sleep") as sleep:
+            with self.assertRaises(deploy_anylist.ReleaseError):
+                deploy_anylist.wait_for_public_health("https://anylist.example", timeout_seconds=10)
+        health.assert_called_once()
+        sleep.assert_not_called()
+
+    def test_reconcile_state_accepts_only_known_regular_files(self):
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            for name in ("snapshot.json", "status.json", "release-manifest.json", "source-before.bundle"):
+                (directory / name).write_text("fixture", encoding="utf-8")
+            accepted = deploy_anylist.reconcile_state_files(directory)
+            self.assertEqual({path.name for path in accepted}, {
+                "snapshot.json", "status.json", "release-manifest.json", "source-before.bundle",
+            })
+            (directory / "unexpected.secret").write_text("fixture", encoding="utf-8")
+            with self.assertRaises(deploy_anylist.ReleaseError):
+                deploy_anylist.reconcile_state_files(directory)
+
+    def test_reconcile_has_no_runtime_or_database_mutation(self):
+        source = inspect.getsource(deploy_anylist.reconcile_rollback)
+        self.assertNotIn('compose(prod, "up"', source)
+        self.assertNotIn('"docker", "volume", "rm"', source)
+        self.assertNotIn('git(source, "switch"', source)
+        self.assertNotIn('docker", "exec"', source)
+        self.assertIn('if not execute:', source)
+        self.assertIn('run(["docker", "image", "rm", candidate_tag])', source)
+        self.assertIn('run(["docker", "image", "rm", rollback_tag])', source)
+        self.assertNotIn('run(["docker", "image", "rm", prod["image"]])', source)
+        self.assertIn('git(source, "update-ref", "-d", release_ref, candidate)', source)
 
     def test_fingerprint_detects_content_changes(self):
         with tempfile.TemporaryDirectory() as directory:
