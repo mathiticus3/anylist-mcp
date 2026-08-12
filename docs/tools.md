@@ -2,6 +2,11 @@
 
 Functionality is organized into **5 domain-grouped tools**. Every domain tool takes an `action` enum plus action-specific parameters.
 
+Those five tools are the full legacy surface. OAuth clients using the exact
+Gina/OpenWebUI callback receive a smaller set of separate read and additive
+tools instead; see [gina-openwebui.md](gina-openwebui.md). The restriction is
+enforced by the server rather than by a prompt or client-side filter.
+
 ```json
 { "name": "shopping", "arguments": { "action": "add_item", "name": "Milk", "quantity": 2 } }
 ```

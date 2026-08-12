@@ -1,9 +1,12 @@
 import { Router } from "express";
 import { createHash, randomBytes, randomUUID } from "crypto";
 import bcrypt from "bcrypt";
+import { rateLimit } from "express-rate-limit";
 import {
   getOAuthClient,
   registerOAuthClient,
+  bindOAuthClientRedirectUri,
+  countPublicOAuthClients,
   getOAuthClientWithSecret,
   saveOAuthCode,
   consumeOAuthCode,
@@ -15,6 +18,14 @@ import {
 } from "../db.js";
 import { loginWithPassword, registerWithPassword } from "./providers/password.js";
 import { loginWithGoogle, isGoogleEnabled } from "./providers/google.js";
+import {
+  OAuthPolicyError,
+  getAllowedRedirectUris,
+  policyForRedirectUri,
+  readPositiveInt,
+  validateClientRedirectUri,
+  validateDcrClientMetadata,
+} from "./policy.js";
 
 function renderLogin(res, error = "") {
   res.render("login", {
@@ -25,6 +36,26 @@ function renderLogin(res, error = "") {
 }
 
 const router = Router();
+
+const dcrRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: readPositiveInt(
+    process.env.OAUTH_DCR_REGISTRATIONS_PER_HOUR,
+    5,
+    "OAUTH_DCR_REGISTRATIONS_PER_HOUR",
+  ),
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "temporarily_unavailable", error_description: "Registration rate limit exceeded." },
+});
+
+function sendPolicyError(res, error) {
+  if (error instanceof OAuthPolicyError) {
+    return res.status(error.status).json({ error: error.code, error_description: error.message });
+  }
+  console.error(`[oauth] policy error name=${error?.name || "Error"}`);
+  return res.status(500).json({ error: "server_error" });
+}
 
 // BASE_URL is optional: if not set, derive from the incoming request so the
 // server works behind any proxy (including a Cloudflare quick tunnel) without
@@ -67,20 +98,41 @@ router.get(["/.well-known/oauth-protected-resource", "/.well-known/oauth-protect
 
 // ── Dynamic Client Registration (RFC 7591) ────────────────────────────────────
 // Home ASsistent expects /register, but Claude expects /oauth/register, so we support both.
-router.post(["/oauth/register", "/register"], (req, res) => {
-  const { redirect_uris, client_name } = req.body || {};
-  const clientId = randomUUID();
-  const redirectUri = Array.isArray(redirect_uris) ? redirect_uris[0] : redirect_uris || null;
-  registerOAuthClient({ clientId, redirectUri });
-  res.status(201).json({
-    client_id: clientId,
-    client_secret: null,
-    redirect_uris: redirectUri ? [redirectUri] : [],
-    client_name: client_name || "MCP Client",
-    token_endpoint_auth_method: "none",
-    grant_types: ["authorization_code", "refresh_token"],
-    response_types: ["code"],
-  });
+router.post(["/oauth/register", "/register"], dcrRateLimit, (req, res) => {
+  try {
+    const metadata = validateDcrClientMetadata(req.body, getAllowedRedirectUris());
+    const maxClients = readPositiveInt(
+      process.env.OAUTH_DCR_MAX_PUBLIC_CLIENTS,
+      25,
+      "OAUTH_DCR_MAX_PUBLIC_CLIENTS",
+    );
+    if (countPublicOAuthClients() >= maxClients) {
+      return res.status(429).json({
+        error: "temporarily_unavailable",
+        error_description: "Public OAuth client quota reached.",
+      });
+    }
+
+    const clientId = randomUUID();
+    registerOAuthClient({
+      clientId,
+      redirectUri: metadata.redirectUri,
+      clientName: metadata.clientName,
+      profile: metadata.profile,
+      source: metadata.source,
+    });
+    res.status(201).json({
+      client_id: clientId,
+      client_secret: null,
+      redirect_uris: [metadata.redirectUri],
+      client_name: metadata.clientName,
+      token_endpoint_auth_method: "none",
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+    });
+  } catch (error) {
+    return sendPolicyError(res, error);
+  }
 });
 
 // ── Authorization Endpoint ────────────────────────────────────────────────────
@@ -89,15 +141,41 @@ router.post(["/oauth/register", "/register"], (req, res) => {
 router.get(["/oauth/authorize", "/authorize"], (req, res) => {
   const { client_id, redirect_uri, state, code_challenge, code_challenge_method, scope } = req.query;
 
-  if (!client_id) {
+  if (typeof client_id !== "string" || !client_id) {
     return res.status(400).send("Missing required parameter: client_id");
   }
+  if ([redirect_uri, state, code_challenge, code_challenge_method, scope]
+    .some(value => value !== undefined && typeof value !== "string")) {
+    return res.status(400).send("OAuth parameters must be single string values.");
+  }
 
-  // Confidential clients (those with a client_secret) don't use PKCE
-  const clientRecord = getOAuthClientWithSecret(client_id);
+  const clientRecord = getOAuthClient(client_id);
+  try {
+    const redirectPolicy = validateClientRedirectUri(
+      clientRecord,
+      redirect_uri,
+      getAllowedRedirectUris(),
+    );
+    if (redirectPolicy.shouldBind) {
+      const clientPolicy = policyForRedirectUri(redirect_uri);
+      bindOAuthClientRedirectUri(
+        client_id,
+        redirect_uri,
+        clientPolicy.profile,
+        clientPolicy.source,
+      );
+    }
+  } catch (error) {
+    if (error instanceof OAuthPolicyError) {
+      return res.status(error.status).send(error.message);
+    }
+    return res.status(500).send("OAuth policy validation failed.");
+  }
+
+  // Confidential clients use their secret. Public clients must use S256 PKCE.
   const isConfidential = !!(clientRecord && clientRecord.client_secret_hash);
-  if (!isConfidential && !code_challenge) {
-    return res.status(400).send("Missing required parameter: code_challenge");
+  if (!isConfidential && (!code_challenge || code_challenge_method !== "S256")) {
+    return res.status(400).send("Public clients must use S256 PKCE.");
   }
 
   // Store OAuth params in session
@@ -145,22 +223,30 @@ async function handleAuthCodeGrant(req, res) {
     return res.status(400).json({ error: "invalid_grant", error_description: "Code invalid or expired" });
   }
 
-  if (code_verifier) {
-    // Public client: verify PKCE
+  if (!client_id || client_id !== codeRow.client_id || redirect_uri !== codeRow.redirect_uri) {
+    return res.status(400).json({
+      error: "invalid_grant",
+      error_description: "Client or redirect URI does not match the authorization code",
+    });
+  }
+
+  const client = getOAuthClientWithSecret(codeRow.client_id);
+  if (!client) {
+    return res.status(401).json({ error: "invalid_client" });
+  }
+
+  if (!client.client_secret_hash) {
+    // Public client: verify S256 PKCE.
+    if (!code_verifier || codeRow.challenge_method !== "S256") {
+      return res.status(400).json({ error: "invalid_grant", error_description: "S256 PKCE is required" });
+    }
     const expected = codeRow.code_challenge;
-    const method = codeRow.challenge_method;
-    const verifierHash = method === "S256"
-      ? createHash("sha256").update(code_verifier).digest("base64url")
-      : code_verifier; // plain (discouraged)
+    const verifierHash = createHash("sha256").update(code_verifier).digest("base64url");
     if (verifierHash !== expected) {
       return res.status(400).json({ error: "invalid_grant", error_description: "PKCE verification failed" });
     }
-  } else if (client_id && client_secret) {
+  } else if (client_secret) {
     // Confidential client: verify client secret
-    const client = getOAuthClientWithSecret(client_id);
-    if (!client || !client.client_secret_hash || client_id !== codeRow.client_id) {
-      return res.status(401).json({ error: "invalid_client" });
-    }
     const valid = await bcrypt.compare(client_secret, client.client_secret_hash);
     if (!valid) {
       return res.status(401).json({ error: "invalid_client" });
@@ -262,32 +348,32 @@ async function handleClientCredentialsGrant(req, res) {
 
 router.post("/auth/login", async (req, res) => {
   const { email, password } = req.body || {};
-  console.log(`[auth] login attempt: ${email}`);
+  console.log("[auth] login attempt");
   if (!email || !password) {
     return renderLogin(res, "Email and password are required.");
   }
   try {
     const user = await loginWithPassword(email, password);
-    console.log(`[auth] login success: ${email} (${user.id})`);
+    console.log(`[auth] login success user:${user.id}`);
     return completeAuth(req, res, user);
   } catch (err) {
-    console.log(`[auth] login failed: ${email} — ${err.message}`);
+    console.log(`[auth] login failed reason:${err?.name || "Error"}`);
     return renderLogin(res, err.message);
   }
 });
 
 router.post("/auth/register", async (req, res) => {
   const { email, password } = req.body || {};
-  console.log(`[auth] register attempt: ${email}`);
+  console.log("[auth] registration attempt");
   if (!email || !password) {
     return renderLogin(res, "Email and password are required.");
   }
   try {
     const user = await registerWithPassword(email, password);
-    console.log(`[auth] register success: ${email} (${user.id})`);
+    console.log(`[auth] registration success user:${user.id}`);
     return completeAuth(req, res, user);
   } catch (err) {
-    console.log(`[auth] register failed: ${email} — ${err.message}`);
+    console.log(`[auth] registration failed reason:${err?.name || "Error"}`);
     return renderLogin(res, err.message);
   }
 });
@@ -298,7 +384,7 @@ router.post("/auth/google", async (req, res) => {
     const user = await loginWithGoogle(credential);
     return completeAuth(req, res, user);
   } catch (err) {
-    console.log(`[auth] google failed — ${err.message}`);
+    console.log(`[auth] google failed reason:${err?.name || "Error"}`);
     return renderLogin(res, err.message);
   }
 });
@@ -386,7 +472,7 @@ function issueCodeAndRedirect(req, res, userId, oauth) {
 export function requireBearerToken(req, res, next) {
   const auth = req.headers["authorization"] || "";
   if (!auth.startsWith("Bearer ")) {
-    console.log(`[oauth] ANOMALOUS bearer missing/wrong auth header: method=${req.method} path=${req.path} auth=${auth ? auth.slice(0, 20) + "…" : "none"} ip=${req.ip}`);
+    console.log(`[oauth] ANOMALOUS bearer missing/wrong auth header: method=${req.method} path=${req.path} ip=${req.ip}`);
     res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", resource_metadata="${baseUrl(req)}/.well-known/oauth-protected-resource"`);
     return res.status(401).json({ error: "unauthorized" });
   }
@@ -402,7 +488,21 @@ export function requireBearerToken(req, res, next) {
     res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", error="invalid_token"`);
     return res.status(401).json({ error: "invalid_token" });
   }
+  const client = getOAuthClient(record.client_id);
+  if (!client) {
+    console.log(`[oauth] ANOMALOUS token references unknown client ip=${req.ip}`);
+    res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", error="invalid_token"`);
+    return res.status(401).json({ error: "invalid_token" });
+  }
+  const callbackPolicy = policyForRedirectUri(client.redirect_uri);
   req.userId = record.user_id;
+  req.clientId = record.client_id;
+  req.clientProfile = callbackPolicy.profile === "gina"
+    ? "gina"
+    : (client.profile || "full");
+  req.actorSource = req.clientProfile === "gina"
+    ? "gina/openwebui"
+    : (client.source || "oauth");
   next();
 }
 

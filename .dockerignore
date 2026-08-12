@@ -1,0 +1,14 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+!.env.http.example
+node_modules
+data
+config
+allowed-emails.txt
+*.mcpb
+npm-debug.log
+test
+docs

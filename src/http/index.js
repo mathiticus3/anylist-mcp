@@ -15,6 +15,7 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { getDb, loadAllowedEmails, deleteExpiredTokens } from "./db.js";
 import { getOrCreateSession } from "./session-manager.js";
 import oauthRouter, { requireBearerToken } from "./auth/oauth.js";
+import { getAllowedRedirectUris, readPositiveInt } from "./auth/policy.js";
 import onboardingRouter from "./onboarding.js";
 import { registerAllTools } from "../tools/index.js";
 import { isGoogleEnabled } from "./auth/providers/google.js";
@@ -38,6 +39,17 @@ function validateEnv() {
   if (!process.env.BASE_URL) {
     console.warn("BASE_URL not set — will derive from incoming request Host header (fine for dev/tunnel use)");
   }
+  getAllowedRedirectUris();
+  readPositiveInt(
+    process.env.OAUTH_DCR_REGISTRATIONS_PER_HOUR,
+    5,
+    "OAUTH_DCR_REGISTRATIONS_PER_HOUR",
+  );
+  readPositiveInt(
+    process.env.OAUTH_DCR_MAX_PUBLIC_CLIENTS,
+    25,
+    "OAUTH_DCR_MAX_PUBLIC_CLIENTS",
+  );
   loadAllowedEmails(); // Will throw + exit if file missing
 }
 
@@ -71,13 +83,19 @@ app.use(session({
 app.use((req, res, next) => {
   const start = Date.now();
   res.on("finish", () => {
-    const body = req.method === "POST" && (req.path === "/sse" || req.path === "/mcp") && req.body
-      ? " body:" + JSON.stringify(req.body).slice(0, 200)
-      : "";
-    console.log(`${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms) session:${req.session?.id?.slice(0, 8) ?? "none"} user:${req.session?.userId ?? "-"}${body}`);
+    console.log(
+      `${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms) ` +
+      `session:${req.session?.id?.slice(0, 8) ?? "none"} ` +
+      `user:${req.userId ?? req.session?.userId ?? "-"} ` +
+      `client:${req.clientId?.slice(0, 8) ?? "-"} source:${req.actorSource ?? "-"}`,
+    );
   });
   next();
 });
+
+function logRequestError(context, error) {
+  console.error(`${context} name=${error?.name || "Error"} code=${error?.code || "-"}`);
+}
 
 // View engine (simple HTML template rendering via res.render)
 app.set("views", path.join(__dirname, "views"));
@@ -142,9 +160,12 @@ app.use(onboardingRouter);
 
 const mcpSessions = new Map(); // sessionId → { server, transport }
 
-function createMcpServer(userId) {
-  const mcpServer = new McpServer({ name: "anylist-mcp-server", version: "2.0.0" });
-  registerAllTools(mcpServer, () => getOrCreateSession(userId));
+function createMcpServer(userId, clientProfile = "full") {
+  const mcpServer = new McpServer({
+    name: clientProfile === "gina" ? "anylist-mcp-gina" : "anylist-mcp-server",
+    version: "2.1.0",
+  });
+  registerAllTools(mcpServer, () => getOrCreateSession(userId), { profile: clientProfile });
   return mcpServer;
 }
 
@@ -159,6 +180,13 @@ async function handleMcp(req, res) {
       ? mcpSessions.get(sessionId)
       : null;
 
+    if (mcpSession && (
+      mcpSession.userId !== req.userId ||
+      mcpSession.clientId !== req.clientId
+    )) {
+      return res.status(403).json({ error: "MCP session belongs to a different OAuth client." });
+    }
+
     if (!mcpSession) {
       if (!isInitializeRequest(req.body)) {
         return res.status(404).json({ error: "Session not found. Send an initialize request first." });
@@ -166,12 +194,17 @@ async function handleMcp(req, res) {
 
       // Create a new MCP session for this user
       const userId = req.userId;
-      const mcpServer = createMcpServer(userId);
+      const mcpServer = createMcpServer(userId, req.clientProfile);
 
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomBytes(16).toString("hex"),
         onsessioninitialized: (sid) => {
-          mcpSessions.set(sid, { server: mcpServer, transport });
+          mcpSessions.set(sid, {
+            server: mcpServer,
+            transport,
+            userId: req.userId,
+            clientId: req.clientId,
+          });
         },
       });
 
@@ -187,7 +220,7 @@ async function handleMcp(req, res) {
 
     await mcpSession.transport.handleRequest(req, res, req.body);
   } catch (err) {
-    console.error("MCP request error:", err);
+    logRequestError("MCP request error", err);
     if (!res.headersSent) {
       res.status(500).json({ error: "Internal server error" });
     }
@@ -204,12 +237,17 @@ function makeSseConnectHandler(postEndpoint) {
     try {
       const transport = new SSEServerTransport(postEndpoint, res);
       const sessionId = transport.sessionId;
-      const mcpServer = createMcpServer(req.userId);
-      mcpSessions.set(sessionId, { server: mcpServer, transport });
+      const mcpServer = createMcpServer(req.userId, req.clientProfile);
+      mcpSessions.set(sessionId, {
+        server: mcpServer,
+        transport,
+        userId: req.userId,
+        clientId: req.clientId,
+      });
       transport.onclose = () => { mcpSessions.delete(sessionId); };
       await mcpServer.connect(transport); // connect() calls transport.start() internally
     } catch (err) {
-      console.error("SSE connect error:", err);
+      logRequestError("SSE connect error", err);
       if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
     }
   };
@@ -221,9 +259,12 @@ async function handleSseMessage(req, res) {
     if (!mcpSession || !(mcpSession.transport instanceof SSEServerTransport)) {
       return res.status(404).json({ error: "SSE session not found." });
     }
+    if (mcpSession.userId !== req.userId || mcpSession.clientId !== req.clientId) {
+      return res.status(403).json({ error: "MCP session belongs to a different OAuth client." });
+    }
     await mcpSession.transport.handlePostMessage(req, res, req.body);
   } catch (err) {
-    console.error("SSE message error:", err);
+    logRequestError("SSE message error", err);
     if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
   }
 }

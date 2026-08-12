@@ -3,20 +3,33 @@ import { textResponse, errorResponse } from "./helpers.js";
 import { createElicitationHelpers } from "./elicitation.js";
 import { normalizeRecipe } from "../recipe-normalizer.js";
 
-export function register(server, getClient) {
+const ACTION_DESCRIPTIONS = {
+  list: "Browse recipe summaries; use search to filter",
+  get: "Get full recipe details by name",
+  create: "Create one new recipe",
+  delete: "Delete a recipe by name",
+  import_url: "Import and save a recipe from a website URL",
+  normalize: "Preview or parse a recipe from a URL or raw text",
+};
+
+const ALL_ACTIONS = Object.freeze(Object.keys(ACTION_DESCRIPTIONS));
+
+export function register(server, getClient, options = {}) {
+  const actions = options.actions || ALL_ACTIONS;
   const { elicitRequiredField, elicitConfirmation } = createElicitationHelpers(server);
 
-  server.registerTool("recipes", {
-    title: "Recipes",
-    description: `Manage AnyList recipes. Actions:
-- list: Browse recipes (returns summaries: name, rating, times, servings). Use 'search' to filter.
-- get: Get full recipe details (ingredients, steps) by name
-- create: Create a new recipe
-- delete: Delete a recipe by name
-- import_url: Import a recipe from a website URL (parses ingredients, steps, etc.)
-- normalize: Preview/parse a recipe from a URL or raw text without saving (set save=true to also save)`,
+  const actionList = actions.map(action => `- ${action}: ${ACTION_DESCRIPTIONS[action]}`).join("\n");
+  server.registerTool(options.name || "recipes", {
+    title: options.title || "Recipes",
+    description: `Manage AnyList recipes. Actions:\n${actionList}`,
+    annotations: options.annotations || {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     inputSchema: {
-      action: z.enum(["list", "get", "create", "delete", "import_url", "normalize"]).describe("The recipe action to perform"),
+      action: z.enum(actions).describe("The recipe action to perform"),
       name: z.string().optional().describe("Recipe name (required for get, create, delete)"),
       search: z.string().optional().describe("Search query to filter recipes (list only)"),
       ingredients: z.array(z.object({
@@ -37,6 +50,9 @@ export function register(server, getClient) {
   }, async (params) => {
     const { action, name, search, ingredients, steps, note, source_name, source_url, prep_time, cook_time, servings, url, text: recipeText, save: saveRecipe } = params;
     try {
+      if (!actions.includes(action)) {
+        return errorResponse(`Recipe action "${action}" is not available to this client.`);
+      }
       const client = await getClient();
       // Recipes are account-level — authenticate only, never resolve a list.
       await client.ensureAuthenticated();
@@ -86,6 +102,9 @@ export function register(server, getClient) {
           const existingRecipes = await client.getRecipes(recipeName);
           const exactMatch = existingRecipes.find(r => r.name.toLowerCase() === recipeName.toLowerCase());
           if (exactMatch) {
+            if (options.rejectExisting) {
+              return errorResponse(`Recipe "${exactMatch.name}" already exists; this client may create new recipes but may not overwrite existing ones.`);
+            }
             const confirmed = await elicitConfirmation(`Recipe "${exactMatch.name}" already exists. Overwrite?`);
             if (!confirmed) return textResponse(`Cancelled — recipe "${exactMatch.name}" was not overwritten.`);
             await client.deleteRecipe(exactMatch.name);

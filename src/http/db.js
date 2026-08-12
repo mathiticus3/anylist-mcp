@@ -48,6 +48,8 @@ function migrate(db) {
     "ALTER TABLE oauth_clients ADD COLUMN client_secret_hash TEXT",
     "ALTER TABLE oauth_clients ADD COLUMN user_id TEXT REFERENCES users(id)",
     "ALTER TABLE oauth_clients ADD COLUMN client_name TEXT",
+    "ALTER TABLE oauth_clients ADD COLUMN profile TEXT NOT NULL DEFAULT 'full'",
+    "ALTER TABLE oauth_clients ADD COLUMN source TEXT",
   ]) {
     try { db.exec(sql); } catch { /* column already exists */ }
   }
@@ -207,11 +209,30 @@ export function getOAuthClient(clientId) {
   return getDb().prepare("SELECT * FROM oauth_clients WHERE client_id = ?").get(clientId);
 }
 
-export function registerOAuthClient({ clientId, redirectUri }) {
+export function registerOAuthClient({ clientId, redirectUri, clientName = null, profile = "full", source = null }) {
   getDb().prepare(`
-    INSERT OR IGNORE INTO oauth_clients (client_id, redirect_uri) VALUES (?, ?)
-  `).run(clientId, redirectUri || null);
+    INSERT OR IGNORE INTO oauth_clients
+      (client_id, redirect_uri, client_name, profile, source)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(clientId, redirectUri || null, clientName, profile, source);
   return getOAuthClient(clientId);
+}
+
+export function bindOAuthClientRedirectUri(clientId, redirectUri, profile = "full", source = null) {
+  const result = getDb().prepare(`
+    UPDATE oauth_clients SET redirect_uri = ?, profile = ?, source = ?
+    WHERE client_id = ? AND redirect_uri IS NULL
+  `).run(redirectUri, profile, source, clientId);
+  if (result.changes !== 1) {
+    throw new Error("OAuth client redirect URI could not be bound.");
+  }
+  return getOAuthClient(clientId);
+}
+
+export function countPublicOAuthClients() {
+  return getDb().prepare(`
+    SELECT COUNT(*) AS count FROM oauth_clients WHERE client_secret_hash IS NULL
+  `).get().count;
 }
 
 export function createConfidentialClient({ clientId, clientSecretHash, userId, clientName }) {

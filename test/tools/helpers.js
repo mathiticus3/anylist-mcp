@@ -12,9 +12,11 @@ import { STANDARD_CATEGORIES } from '../../src/anylist-client.js';
 
 export function createMockServer() {
   const handlers = {};
+  const toolConfigs = {};
   const server = {
-    registerTool: (name, _schema, handler) => {
+    registerTool: (name, schema, handler) => {
       handlers[name] = handler;
+      toolConfigs[name] = schema;
       // Return a stub registeredTool so callers can call .update() without error.
       return { update: () => {} };
     },
@@ -22,7 +24,7 @@ export function createMockServer() {
     // Returning null means elicitation is disabled; missing-param paths throw instead.
     server: { getClientCapabilities: () => null },
   };
-  return { server, handlers };
+  return { server, handlers, toolConfigs };
 }
 
 export class MockAnyListClient {

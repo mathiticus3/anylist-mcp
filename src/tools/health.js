@@ -1,10 +1,16 @@
 import { z } from "zod";
 import { textResponse, errorResponse } from "./helpers.js";
 
-export function register(server, getClient) {
-  server.registerTool("health_check", {
-    title: "AnyList Connection Test",
+export function register(server, getClient, options = {}) {
+  server.registerTool(options.name || "health_check", {
+    title: options.title || "AnyList Connection Test",
     description: "Test connection to AnyList and access to target shopping list",
+    annotations: options.annotations || {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       list_name: z.string().optional().describe("Name of the list to use (defaults to configured default list)")
     }

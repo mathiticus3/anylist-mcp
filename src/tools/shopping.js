@@ -3,22 +3,35 @@ import { textResponse, errorResponse, structuredResponse } from "./helpers.js";
 import { createElicitationHelpers } from "./elicitation.js";
 import { STANDARD_CATEGORIES } from "../anylist-client.js";
 
-// TODO: What does this do?
-function buildDescription(stores) {
-  const base = `Manage AnyList shopping lists and items. Actions:
-- list_lists: Show all lists with item counts
-- list_items: Show items on a list, grouped by category (category_set picks which set to group by)
-- list_categories: Show the list's category sets and their categories
-- add_item: Add an item to a list (also updates quantity/notes/categories of an existing item)
-- add_items: Add many items at once (pass the "items" array)
-- update_item: Update an existing item in place: rename (new_name), quantity, notes, category/categories
-- check_item: Check off (complete) an item
-- uncheck_item: Uncheck (reactivate) a completed item
-- delete_item: Permanently remove an item from a list
-- create_category / rename_category / delete_category: Manage categories in a category set
-- get_favorites: Get favorite items for a list
-- get_recents: Get recently added items for a list
-- list_stores: list stores available for the list (if any)
+const ACTION_DESCRIPTIONS = {
+  list_lists: "Show all lists with item counts",
+  list_items: "Show items on a list, grouped by category (category_set picks which set to group by)",
+  list_categories: "Show the list's category sets and their categories",
+  add_item: "Add an item to a list (also updates an existing item)",
+  add_items: "Add many items at once (pass the items array)",
+  update_item: "Update an existing item in place",
+  set_item_store: "Assign or clear an item's store",
+  check_item: "Check off (complete) an item",
+  uncheck_item: "Uncheck (reactivate) a completed item",
+  delete_item: "Permanently remove an item from a list",
+  create_category: "Create a category in a category set",
+  rename_category: "Rename a category",
+  delete_category: "Delete a category",
+  get_favorites: "Get favorite items for a list",
+  get_recents: "Get recently added items for a list",
+  list_stores: "List stores available for the list",
+};
+
+const ALL_ACTIONS = Object.freeze(Object.keys(ACTION_DESCRIPTIONS));
+
+function buildDescription(stores, actions = ALL_ACTIONS, options = {}) {
+  const actionList = actions.map(action => {
+    const description = action === "add_item" && options.rejectExisting
+      ? "Add one previously absent item to a list"
+      : ACTION_DESCRIPTIONS[action];
+    return `- ${action}: ${description}`;
+  }).join("\n");
+  const base = `Manage AnyList shopping lists and items. Actions:\n${actionList}
 
 Categories: "category" takes a category name, matched case-insensitively against the
 list's own category sets (e.g. a punch list's "Urgent"), or one of AnyList's standard
@@ -49,7 +62,8 @@ const bulkItemSchema = z.object({
   store_name: z.string().optional(),
 });
 
-export function register(server, getClient) {
+export function register(server, getClient, options = {}) {
+  const actions = options.actions || ALL_ACTIONS;
   const { elicitListName, elicitItemChoice, elicitRequiredField } = createElicitationHelpers(server);
 
   function findPartialMatches(client, itemName, includeChecked = false) {
@@ -71,14 +85,17 @@ export function register(server, getClient) {
 
   let lastStoreSignature = '';
 
-  const registeredTool = server.registerTool("shopping", {
-    title: "Shopping Lists & Items",
-    description: buildDescription([]),
+  const registeredTool = server.registerTool(options.name || "shopping", {
+    title: options.title || "Shopping Lists & Items",
+    description: buildDescription([], actions, options),
+    annotations: options.annotations || {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
     inputSchema: {
-      action: z.enum(["list_lists", "list_items", "list_categories", "add_item", "add_items",
-        "update_item", "set_item_store", "check_item", "uncheck_item", "delete_item",
-        "create_category", "rename_category", "delete_category",
-        "get_favorites", "get_recents", "list_stores"]).describe("The shopping action to perform"),
+      action: z.enum(actions).describe("The shopping action to perform"),
       list_name: z.string().optional().describe("Name of the list (defaults to configured default list)"),
       name: z.string().optional().describe("Item name (required for add_item, update_item, set_item_store, check_item, uncheck_item, delete_item) or category name (create_category, rename_category, delete_category)"),
       new_name: z.string().optional().describe("New name (update_item and rename_category only)"),
@@ -95,6 +112,9 @@ export function register(server, getClient) {
   }, async (params) => {
     const { action, list_name, name, quantity, notes, include_checked, include_notes, category, categories, category_set } = params;
     try {
+      if (!actions.includes(action)) {
+        return errorResponse(`Shopping action "${action}" is not available to this client.`);
+      }
       const client = await getClient();
       switch (action) {
         case "list_lists": {
@@ -120,7 +140,7 @@ export function register(server, getClient) {
           const sig = stores.map(s => s.name).join(',');
           if (sig !== lastStoreSignature) {
             lastStoreSignature = sig;
-            registeredTool.update({ description: buildDescription(stores) });
+            registeredTool.update({ description: buildDescription(stores, actions, options) });
           }
           const items = await client.getItems(include_checked || false, include_notes || false, category_set || null);
           if (items.length === 0) {
@@ -180,6 +200,13 @@ export function register(server, getClient) {
           let itemName = name;
           if (!itemName) itemName = await elicitRequiredField("name", "What item would you like to add?");
           await client.connect(list_name);
+
+          const itemAlreadyExists = (client.targetList.items || []).some(
+            item => item.name.toLowerCase() === itemName.toLowerCase(),
+          );
+          if (options.rejectExisting && itemAlreadyExists) {
+            return errorResponse(`Item "${itemName}" already exists; this client may add new items but may not update existing ones.`);
+          }
 
           const {valid, message} = await validateStoreName(client, params.store_name);
           if (!valid)

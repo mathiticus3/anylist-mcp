@@ -18,6 +18,11 @@ The MCP server provides **5 domain-grouped tools** rather than 18+ individual on
 
 These tools work together to enable typical workflows: browse or create recipes → plan meals → add ingredients to your shopping list. See [docs/tools.md](docs/tools.md) for the complete reference including all actions and parameters.
 
+The HTTP deployment also supports a server-enforced, read-first profile for
+Gina in OpenWebUI. It exposes separate read and single-record additive tools and
+does not register delete, bulk, overwrite, or import operations. See
+[docs/gina-openwebui.md](docs/gina-openwebui.md).
+
 
 
 ---
@@ -117,6 +122,21 @@ https://<your-tunnel-domain>
 ```
 
 See **[docs/home-assistant.md](docs/home-assistant.md)** for step-by-step Home Assistant setup.
+
+## Security and backups
+
+Dynamic OAuth registration uses an exact redirect allowlist, a per-IP rate
+limit, and a global public-client quota. Existing registered clients retain
+their bound callback. MCP sessions are bound to the OAuth client and user that
+initialized them, and HTTP logs exclude request bodies and private AnyList
+content.
+
+The SQLite volume and `SERVER_SECRET_KEY` must be backed up together without
+printing or storing the key in plaintext logs. See [docs/backup.md](docs/backup.md)
+for the required backup set and restore acceptance checks.
+
+See [docs/security.md](docs/security.md) for the complete boundary and the
+remaining upstream AnyList-client dependency risk.
 
 ---
 
