@@ -317,6 +317,33 @@ def inspect_container(prod: dict, container_id: str) -> dict:
     }
 
 
+def canonical_mounts(mounts: list[dict]) -> list[dict]:
+    # Docker reports .Mounts in nondeterministic order across recreates.
+    return sorted(mounts, key=lambda item: item["destination"])
+
+
+def wait_for_container_health(prod: dict, container_id: str) -> dict:
+    """Docker runs the first health probe an interval after start, so a freshly
+    recreated container legitimately reports `starting`; poll for a terminal
+    verdict and fail only on an unhealthy verdict or the probe deadline."""
+    check = json.loads(run(["docker", "inspect", container_id]))[0]["Config"].get("Healthcheck") or {}
+    nanosecond = 1_000_000_000
+    interval = (check.get("Interval") or 30 * nanosecond) / nanosecond
+    probe_timeout = (check.get("Timeout") or 30 * nanosecond) / nanosecond
+    retries = check.get("Retries") or 3
+    start_period = (check.get("StartPeriod") or 0) / nanosecond
+    deadline = time.monotonic() + start_period + (interval + probe_timeout) * retries + 30
+    while True:
+        snapshot = inspect_container(prod, container_id)
+        if snapshot["running"] and snapshot["health"] == "healthy":
+            return snapshot
+        if not snapshot["running"] or snapshot["health"] != "starting":
+            raise ReleaseError("AnyList container health verdict is terminal and not healthy")
+        if time.monotonic() >= deadline:
+            raise ReleaseError("AnyList container did not report healthy before the probe deadline")
+        time.sleep(2)
+
+
 def assert_container(snapshot: dict, prod: dict, *, expected_image_id: str | None = None) -> None:
     if snapshot["name"] != prod["container_name"] or snapshot["configured_image"] != prod["image"]:
         raise ReleaseError("unexpected AnyList container identity")
@@ -504,7 +531,7 @@ def reconcile_rollback(spec: dict, candidate: str, *, execute: bool = False) -> 
     current_id = run(compose(prod, "ps", "-q", "anylist-mcp"), cwd=cwd)
     current = inspect_container(prod, current_id)
     assert_container(current, prod, expected_image_id=snapshot["container"]["image_id"])
-    if current["mounts"] != snapshot["container"]["mounts"]:
+    if canonical_mounts(current["mounts"]) != canonical_mounts(snapshot["container"]["mounts"]):
         raise ReleaseError("runtime mounts differ from rollback checkpoint")
     if (current["environment_sha256"] != snapshot["container"]["environment_sha256"] or
             current["networks"] != snapshot["container"]["networks"]):
@@ -751,7 +778,7 @@ def rollback(spec: dict, directory: Path, *, automatic: bool = False) -> None:
         run(compose(prod, "up", "-d", "--no-deps", "--no-build", "--force-recreate", "anylist-mcp"), cwd=cwd)
         wait_for_health(prod["local_base_url"])
     current_id = run(compose(prod, "ps", "-q", "anylist-mcp"), cwd=cwd)
-    current = inspect_container(prod, current_id)
+    current = wait_for_container_health(prod, current_id)
     assert_container(current, prod, expected_image_id=snapshot["container"]["image_id"])
     if current["environment_sha256"] != snapshot["container"]["environment_sha256"] or current["networks"] != snapshot["container"]["networks"]:
         raise ReleaseError("container environment or network checkpoint was not restored")
@@ -837,7 +864,7 @@ def deploy(manifest: dict, spec: dict, backup_id: str, backup_digest: str) -> No
         wait_for_public_health(prod["public_base_url"])
 
         current_id = run(compose(prod, "ps", "-q", "anylist-mcp"), cwd=cwd)
-        current = inspect_container(prod, current_id)
+        current = wait_for_container_health(prod, current_id)
         assert_container(current, prod, expected_image_id=candidate_image)
         if current["environment_sha256"] != snapshot["container"]["environment_sha256"] or current["networks"] != snapshot["container"]["networks"]:
             raise ReleaseError("deployed container environment or networks changed")

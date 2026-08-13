@@ -157,6 +157,63 @@ process.stdout.write(JSON.stringify({columns,count}));
         health.assert_called_once()
         sleep.assert_not_called()
 
+    def test_recreate_verification_polls_through_healthcheck_warmup(self):
+        prod = {"container_name": "anylist-mcp"}
+        health_config = json.dumps([{"Config": {"Healthcheck": {
+            "Interval": 30_000_000_000, "Timeout": 5_000_000_000, "Retries": 3,
+        }}}])
+        warming = {"running": True, "health": "starting"}
+        healthy = {"running": True, "health": "healthy"}
+        with patch.object(deploy_anylist, "run", return_value=health_config), \
+                patch.object(deploy_anylist, "inspect_container",
+                             side_effect=[warming, warming, healthy]) as container, \
+                patch.object(deploy_anylist.time, "monotonic", side_effect=[0, 1, 2]), \
+                patch.object(deploy_anylist.time, "sleep") as sleep:
+            result = deploy_anylist.wait_for_container_health(prod, "container-1")
+        self.assertEqual(result, healthy)
+        self.assertEqual(container.call_count, 3)
+        self.assertEqual(sleep.call_count, 2)
+        for name in ("deploy", "rollback"):
+            source = inspect.getsource(getattr(deploy_anylist, name))
+            self.assertIn("current = wait_for_container_health(prod, current_id)", source)
+            self.assertNotIn("current = inspect_container(prod, current_id)", source)
+
+    def test_recreate_verification_fails_only_on_terminal_verdict_or_deadline(self):
+        prod = {"container_name": "anylist-mcp"}
+        health_config = json.dumps([{"Config": {"Healthcheck": {"Interval": 30_000_000_000}}}])
+        with patch.object(deploy_anylist, "run", return_value=health_config), \
+                patch.object(deploy_anylist, "inspect_container",
+                             return_value={"running": True, "health": "unhealthy"}), \
+                patch.object(deploy_anylist.time, "monotonic", return_value=0), \
+                patch.object(deploy_anylist.time, "sleep") as sleep:
+            with self.assertRaises(deploy_anylist.ReleaseError):
+                deploy_anylist.wait_for_container_health(prod, "container-1")
+        sleep.assert_not_called()
+        with patch.object(deploy_anylist, "run", return_value=health_config), \
+                patch.object(deploy_anylist, "inspect_container",
+                             return_value={"running": True, "health": "starting"}), \
+                patch.object(deploy_anylist.time, "monotonic", side_effect=[0, 10_000]), \
+                patch.object(deploy_anylist.time, "sleep") as sleep:
+            with self.assertRaises(deploy_anylist.ReleaseError):
+                deploy_anylist.wait_for_container_health(prod, "container-1")
+        sleep.assert_not_called()
+
+    def test_reconcile_mount_comparison_ignores_docker_report_order(self):
+        data = {"type": "volume", "name": "web-caddy_anylist-mcp-data", "source": None,
+                "destination": "/data", "rw": True}
+        allowlist = {"type": "bind", "name": None,
+                     "source": "/home/deploy/web-caddy/anylist-allowed-emails.txt",
+                     "destination": "/config/allowed-emails.txt", "rw": False}
+        self.assertEqual(deploy_anylist.canonical_mounts([data, allowlist]),
+                         deploy_anylist.canonical_mounts([allowlist, data]))
+        self.assertNotEqual(deploy_anylist.canonical_mounts([data, allowlist]),
+                            deploy_anylist.canonical_mounts([data, {**allowlist, "rw": True}]))
+        source = inspect.getsource(deploy_anylist.reconcile_rollback)
+        self.assertIn(
+            'canonical_mounts(current["mounts"]) != canonical_mounts(snapshot["container"]["mounts"])',
+            source,
+        )
+
     def test_reconcile_state_accepts_only_known_regular_files(self):
         with tempfile.TemporaryDirectory() as directory_name:
             directory = Path(directory_name)
