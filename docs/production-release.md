@@ -1,12 +1,13 @@
 # Scoped production release
 
 This workflow releases only the existing `anylist-mcp` service. It does not
-change Caddy, Trilium, another Compose service, the production Git remote, the
-`release/v1.7.3` branch, `.env.anylist`, the email allowlist, or the named data
-volume. Production runs the candidate from a detached, digest-verified commit.
+change Caddy, Trilium, another Compose service, the production Git remote,
+`.env.anylist`, the email allowlist, or the named data volume. Production runs
+the candidate from a detached, digest-verified commit.
 
 The workflow fails closed unless production is still a clean checkout of the
-recorded baseline, the current container is healthy, and its image, mounts,
+recorded baseline commit and checkout mode (attached branch or detached), the
+current container is healthy, and its image, mounts,
 environment digest, network membership, volume identity, and protected files
 match the release specification. It records a sanitized container/source/image
 checkpoint under `~/.local/state/anylist-mcp/releases/<candidate>`.
@@ -89,7 +90,7 @@ Any failure triggers rollback. A terminal interruption can be recovered with:
 python3 deploy_anylist.py rollback --candidate '<full-40-character-commit>'
 ```
 
-Rollback restores the checkpointed image tag and original release branch,
+Rollback restores the checkpointed image tag and original checkout state,
 recreates only `anylist-mcp` when the runtime may have changed, and verifies the
 old image, health, mounts, protected files, volume, environment, networks,
 metadata counts, schema compatibility, and other service IDs. If candidate
@@ -109,9 +110,9 @@ python3 deploy_anylist.py reconcile-rollback \
   --candidate '<full-40-character-incident-commit>'
 ```
 
-It fails closed unless the source commit/branch/origin, original image,
+It fails closed unless the source commit/checkout mode/origin, original image,
 container health, volume and mounts, environment digest, networks, protected
-file fingerprints, all five peer container IDs, compatible schema, exact
+file fingerprints, all peer container IDs, compatible schema, exact
 nonvolatile account/OAuth counts, SQLite quick check, OAuth-token referential
 and expiry integrity, and local/public health all match the checkpoint. It also
 requires exact release-owned candidate and rollback tags, candidate image ID

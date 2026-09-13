@@ -123,7 +123,6 @@ router.post(["/oauth/register", "/register"], dcrRateLimit, (req, res) => {
     });
     res.status(201).json({
       client_id: clientId,
-      client_secret: null,
       redirect_uris: [metadata.redirectUri],
       client_name: metadata.clientName,
       token_endpoint_auth_method: "none",
@@ -473,7 +472,8 @@ export function requireBearerToken(req, res, next) {
   const auth = req.headers["authorization"] || "";
   if (!auth.startsWith("Bearer ")) {
     console.log(`[oauth] ANOMALOUS bearer missing/wrong auth header: method=${req.method} path=${req.path} ip=${req.ip}`);
-    res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", resource_metadata="${baseUrl(req)}/.well-known/oauth-protected-resource"`);
+    const resourcePath = req.path === "/mcp" || req.path === "/mcp/" ? "/mcp" : "";
+    res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", resource_metadata="${baseUrl(req)}/.well-known/oauth-protected-resource${resourcePath}"`);
     return res.status(401).json({ error: "unauthorized" });
   }
   const token = auth.slice(7);

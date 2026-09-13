@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   GINA_OPENWEBUI_REDIRECT_URI,
+  MAKE_MCP_REDIRECT_URI,
   getAllowedRedirectUris,
   readPositiveInt,
   validateClientRedirectUri,
@@ -9,9 +10,10 @@ import {
 } from "../src/http/auth/policy.js";
 
 describe("OAuth redirect policy", () => {
-  it("always includes the exact Gina, Claude, and Home Assistant callbacks", () => {
+  it("always includes the exact Gina, Make, Claude, and Home Assistant callbacks", () => {
     const allowed = getAllowedRedirectUris("[]");
     assert.ok(allowed.has(GINA_OPENWEBUI_REDIRECT_URI));
+    assert.ok(allowed.has(MAKE_MCP_REDIRECT_URI));
     assert.ok(allowed.has("https://claude.ai/api/mcp/auth_callback"));
     assert.ok(allowed.has("https://my.home-assistant.io/redirect/oauth"));
   });

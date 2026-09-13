@@ -26,12 +26,14 @@ build_spec.loader.exec_module(build_release)
 class ProductionReleaseTests(unittest.TestCase):
     def test_release_spec_is_exactly_scoped_to_live_anylist(self):
         release = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(release["expected_baseline"]["commit"], "714ec5cba171af4cb18628c603d1bd36e9a0d199")
+        self.assertEqual(release["expected_baseline"]["commit"], "086f215ebe86613384b074d6efd7398ace428ae4")
+        self.assertIsNone(release["expected_baseline"]["branch"])
         self.assertEqual(release["production"]["source_directory"], "/home/deploy/web-caddy/anylist-upstream")
         self.assertEqual(release["production"]["volume_name"], "web-caddy_anylist-mcp-data")
         self.assertEqual(release["production"]["container_name"], "anylist-mcp")
         self.assertEqual(release["expected_baseline"]["oauth_client_columns"], [
             "client_id", "redirect_uri", "created_at", "client_secret_hash", "user_id", "client_name",
+            "profile", "source",
         ])
         self.assertEqual(release["candidate_schema"]["oauth_client_columns"][-2:], ["profile", "source"])
 
@@ -238,6 +240,7 @@ process.stdout.write(JSON.stringify({columns,count}));
         self.assertIn('run(["docker", "image", "rm", rollback_tag])', source)
         self.assertNotIn('run(["docker", "image", "rm", prod["image"]])', source)
         self.assertIn('git(source, "update-ref", "-d", release_ref, candidate)', source)
+        self.assertNotIn('len(snapshot["other_service_ids"]) !=', source)
 
     def test_fingerprint_detects_content_changes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -271,6 +274,33 @@ process.stdout.write(JSON.stringify({columns,count}));
         self.assertFalse(deploy_anylist.submodule_is_exact(f"+{commit} anylist-js", commit))
         self.assertFalse(deploy_anylist.submodule_is_exact(f"-{commit} anylist-js", commit))
         self.assertFalse(deploy_anylist.submodule_is_exact(f"U{commit} anylist-js", commit))
+
+    def test_source_branch_distinguishes_attached_and_detached_checkouts(self):
+        source = Path("/srv/anylist")
+        with patch.object(deploy_anylist, "git", return_value="HEAD"):
+            self.assertIsNone(deploy_anylist.source_branch(source))
+        with patch.object(deploy_anylist, "git", return_value="release/v1.7.3"):
+            self.assertEqual(deploy_anylist.source_branch(source), "release/v1.7.3")
+
+    def test_source_checkpoint_restore_preserves_checkout_mode(self):
+        source = Path("/srv/anylist")
+        commit = "a" * 40
+        with patch.object(deploy_anylist, "git") as git:
+            deploy_anylist.switch_to_source_checkpoint(
+                source, {"branch": None, "commit": commit},
+            )
+        git.assert_called_once_with(source, "switch", "--detach", commit)
+
+        with patch.object(deploy_anylist, "git") as git:
+            deploy_anylist.switch_to_source_checkpoint(
+                source, {"branch": "release/v1.7.3", "commit": commit},
+            )
+        git.assert_called_once_with(source, "switch", "release/v1.7.3")
+
+        with self.assertRaises(deploy_anylist.ReleaseError):
+            deploy_anylist.switch_to_source_checkpoint(
+                source, {"branch": None, "commit": "short"},
+            )
 
 
 if __name__ == "__main__":

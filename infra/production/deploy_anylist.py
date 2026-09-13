@@ -115,6 +115,25 @@ def git(source: Path, *args: str) -> str:
     return run(["git", "-C", str(source), *args])
 
 
+def source_branch(source: Path) -> str | None:
+    """Return the attached branch name, or None for a detached checkout."""
+    value = git(source, "rev-parse", "--abbrev-ref", "HEAD")
+    return None if value == "HEAD" else value
+
+
+def switch_to_source_checkpoint(source: Path, checkpoint: dict) -> None:
+    branch = checkpoint.get("branch")
+    commit = checkpoint.get("commit")
+    if not HEX40.fullmatch(commit or ""):
+        raise ReleaseError("source checkpoint commit is not exact")
+    if branch is None:
+        git(source, "switch", "--detach", commit)
+    elif isinstance(branch, str) and branch:
+        git(source, "switch", branch)
+    else:
+        raise ReleaseError("source checkpoint branch is invalid")
+
+
 def submodule_is_exact(output: str, expected_commit: str) -> bool:
     # run() strips the clean status's leading space. Dirty/missing/conflicted
     # statuses retain their +, -, or U marker and therefore cannot match.
@@ -372,8 +391,8 @@ def preflight(manifest: dict, spec: dict) -> dict:
         raise ReleaseError("production source checkout is not clean")
     if git(source, "rev-parse", "HEAD") != base["commit"]:
         raise ReleaseError("production source is not at the expected baseline")
-    if git(source, "symbolic-ref", "--short", "HEAD") != base["branch"]:
-        raise ReleaseError("production source branch is not the expected release branch")
+    if source_branch(source) != base.get("branch"):
+        raise ReleaseError("production source checkout mode is not the expected baseline")
     if git(source, "remote", "get-url", "origin") != base["origin"]:
         raise ReleaseError("production Git origin changed")
     if git(source, "rev-parse", f"HEAD:{base['submodule_path']}") != base["submodule_commit"]:
@@ -523,8 +542,8 @@ def reconcile_rollback(spec: dict, candidate: str, *, execute: bool = False) -> 
     before_status = git(source, "status", "--porcelain=v1", "--untracked-files=all")
     if before_status or git(source, "rev-parse", "HEAD") != snapshot["source"]["commit"]:
         raise ReleaseError("source is not at the clean rollback checkpoint")
-    if git(source, "symbolic-ref", "--short", "HEAD") != snapshot["source"]["branch"]:
-        raise ReleaseError("source rollback branch is not exact")
+    if source_branch(source) != snapshot["source"].get("branch"):
+        raise ReleaseError("source rollback checkout mode is not exact")
     if git(source, "remote", "get-url", "origin") != snapshot["source"]["origin"]:
         raise ReleaseError("source rollback origin is not exact")
 
@@ -537,8 +556,8 @@ def reconcile_rollback(spec: dict, candidate: str, *, execute: bool = False) -> 
             current["networks"] != snapshot["container"]["networks"]):
         raise ReleaseError("runtime environment or networks differ from rollback checkpoint")
     verify_unchanged_files(snapshot)
-    if service_ids(prod) != snapshot["other_service_ids"] or len(snapshot["other_service_ids"]) != 5:
-        raise ReleaseError("peer service IDs differ from the five-service checkpoint")
+    if service_ids(prod) != snapshot["other_service_ids"]:
+        raise ReleaseError("peer service IDs differ from the checkpoint")
     current_columns = oauth_client_columns(current_id)
     allowed_schemas = allowed_oauth_client_schemas(spec)
     if current_columns not in allowed_schemas:
@@ -769,8 +788,10 @@ def rollback(spec: dict, directory: Path, *, automatic: bool = False) -> None:
         raise ReleaseError("release-state candidate identity is inconsistent")
     emit("restoring source and image checkpoints")
     run(["docker", "image", "tag", snapshot["container"]["image_id"], prod["image"]])
-    git(source, "switch", snapshot["source"]["branch"])
-    if git(source, "rev-parse", "HEAD") != snapshot["source"]["commit"] or git(source, "status", "--porcelain=v1", "--untracked-files=all"):
+    switch_to_source_checkpoint(source, snapshot["source"])
+    if (git(source, "rev-parse", "HEAD") != snapshot["source"]["commit"] or
+            source_branch(source) != snapshot["source"].get("branch") or
+            git(source, "status", "--porcelain=v1", "--untracked-files=all")):
         raise ReleaseError("source checkpoint could not be restored exactly")
     phases_requiring_recreate = {"runtime_recreate_attempted", "deployed", "verification_failed"}
     effective_phase = status.get("failed_from", status.get("phase"))

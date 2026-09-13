@@ -10,8 +10,8 @@ https://cdlms.tail767e55.ts.net:8443/oauth/clients/mcp:anylist/callback
 ```
 
 New dynamic registrations are accepted only for exact callbacks in the
-server-side allowlist. The Gina callback, Claude callback, and Home Assistant
-callback are built in. Additional exact HTTPS (or loopback HTTP) callbacks may
+server-side allowlist. The Gina, Make MCP Client, Claude, and Home Assistant
+callbacks are built in. Additional exact HTTPS (or loopback HTTP) callbacks may
 be added with `OAUTH_ALLOWED_REDIRECT_URIS`; the value is a JSON array. Existing
 registered clients remain usable at their originally registered callback.
 

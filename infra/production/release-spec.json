@@ -2,8 +2,8 @@
   "schema_version": 1,
   "service": "anylist-mcp",
   "expected_baseline": {
-    "branch": "release/v1.7.3",
-    "commit": "714ec5cba171af4cb18628c603d1bd36e9a0d199",
+    "branch": null,
+    "commit": "086f215ebe86613384b074d6efd7398ace428ae4",
     "origin": "https://github.com/mathiticus3/anylist-mcp.git",
     "submodule_path": "anylist-js",
     "submodule_commit": "1d3c9816c4ecfc3b2d8c5c48dd35619b125381c3",
@@ -13,7 +13,9 @@
       "created_at",
       "client_secret_hash",
       "user_id",
-      "client_name"
+      "client_name",
+      "profile",
+      "source"
     ]
   },
   "candidate_schema": {

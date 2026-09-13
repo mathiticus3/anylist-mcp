@@ -1,8 +1,10 @@
 export const GINA_OPENWEBUI_REDIRECT_URI =
   "https://cdlms.tail767e55.ts.net:8443/oauth/clients/mcp:anylist/callback";
+export const MAKE_MCP_REDIRECT_URI = "https://www.make.com/oauth/cb/mcp";
 
 const BUILTIN_REDIRECT_URIS = Object.freeze([
   GINA_OPENWEBUI_REDIRECT_URI,
+  MAKE_MCP_REDIRECT_URI,
   "https://claude.ai/api/mcp/auth_callback",
   "https://my.home-assistant.io/redirect/oauth",
 ]);

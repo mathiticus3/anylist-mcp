@@ -188,6 +188,13 @@ async function handleMcp(req, res) {
     }
 
     if (!mcpSession) {
+      if (!sessionId && !isInitializeRequest(req.body)) {
+        return res.status(400).json({
+          jsonrpc: "2.0",
+          error: { code: -32000, message: "Bad Request: Mcp-Session-Id header is required" },
+          id: null,
+        });
+      }
       if (!isInitializeRequest(req.body)) {
         return res.status(404).json({ error: "Session not found. Send an initialize request first." });
       }
