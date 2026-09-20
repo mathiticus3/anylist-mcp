@@ -1,3 +1,4 @@
+import {stableServer, registerService} from '../stable/tools.js';
 import { register as registerHealth } from "./health.js";
 import { register as registerShopping } from "./shopping.js";
 import { register as registerRecipes } from "./recipes.js";
@@ -15,6 +16,8 @@ import { register as registerRecipeCollections } from "./recipe-collections.js";
  * @param {{profile?: string}} options OAuth-client tool profile.
  */
 export function registerAllTools(server, getClient, options = {}) {
+  const rawServer=server;
+  server=stableServer(server,getClient,options);
   if (options.profile === "gina") {
     const readOnly = {
       readOnlyHint: true,
@@ -96,4 +99,5 @@ export function registerAllTools(server, getClient, options = {}) {
   registerRecipes(server, getClient);
   registerMealPlan(server, getClient);
   registerRecipeCollections(server, getClient);
+  registerService(rawServer,getClient);
 }

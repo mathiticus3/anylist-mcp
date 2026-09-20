@@ -1,3 +1,5 @@
+import {validateRecipeUrl} from './safe-recipe-fetch.js';
+import {resolve} from './stable/errors.js';
 import { createHash } from 'crypto';
 import FormData from 'form-data';
 import AnyList from './anylist-legacy-client.cjs';
@@ -85,7 +87,9 @@ class AnyListClient {
     }
 
     try {
-      const client = new AnyList({ email: username, password });
+      const client = new AnyList({ email: username, password, credentialsFile: null });
+      client.authClient = client.authClient.extend({timeout:{request:15000},retry:{limit:0}});
+      client.client.defaults.options.timeout = {request:15000};
       console.error(`Connecting to AnyList as ${username}...`);
       await client.login();
       console.error('Successfully authenticated with AnyList');
@@ -96,6 +100,7 @@ class AnyListClient {
       return this.client;
     } catch (error) {
       const wrappedError = new Error(`Failed to connect to AnyList: ${error.message}`);
+      wrappedError.status = error?.response?.statusCode;
       console.error(wrappedError.message);
       throw wrappedError;
     }
@@ -123,13 +128,11 @@ class AnyListClient {
       throw error;
     }
 
-    // Already resolved to this list — nothing to do.
-    if (this.targetList && this.targetList.name === targetListName) {
-      return true;
-    }
+    // Refresh before selection: websocket updates replace List objects.
+    await this.client.getLists(true);
 
     console.error(`Looking for list: "${targetListName}"`);
-    this.targetList = this.client.getListByName(targetListName);
+    this.targetList = resolve(this.client.lists, {name:targetListName}, "list");
 
     if (!this.targetList) {
       const error = new Error(`List "${targetListName}" not found. Available lists: ${this.getAvailableListNames().join(', ')}`);
@@ -765,6 +768,7 @@ class AnyListClient {
       throw new Error('Not connected. Call connect() first.');
     }
 
+    await validateRecipeUrl(url);
     // Try AnyList's native web import first
     let nativeError = null;
     try {

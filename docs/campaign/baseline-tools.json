@@ -1,0 +1,323 @@
+[
+  {
+    "name": "health_check",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "list_name": {
+          "type": "string",
+          "description": "Name of the list to use (defaults to configured default list)"
+        }
+      },
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "shopping",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list_lists",
+            "list_items",
+            "list_categories",
+            "add_item",
+            "add_items",
+            "update_item",
+            "set_item_store",
+            "check_item",
+            "uncheck_item",
+            "delete_item",
+            "create_category",
+            "rename_category",
+            "delete_category",
+            "get_favorites",
+            "get_recents",
+            "list_stores"
+          ],
+          "description": "The shopping action to perform"
+        },
+        "list_name": {
+          "type": "string",
+          "description": "Name of the list (defaults to configured default list)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Item name (required for add_item, update_item, set_item_store, check_item, uncheck_item, delete_item) or category name (create_category, rename_category, delete_category)"
+        },
+        "new_name": {
+          "type": "string",
+          "description": "New name (update_item and rename_category only)"
+        },
+        "quantity": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Item quantity (add_item and update_item, defaults to 1 on add)"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Notes for the item (add_item and update_item)"
+        },
+        "include_checked": {
+          "type": "boolean",
+          "description": "Include checked-off items (list_items only, default false)"
+        },
+        "include_notes": {
+          "type": "boolean",
+          "description": "Include notes for each item (list_items only, default false)"
+        },
+        "category": {
+          "type": "string",
+          "description": "Category name for the item, matched case-insensitively against the list's category sets; or a standard grocery category on lists without sets (add_item and update_item)"
+        },
+        "categories": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Per-set category assignment, e.g. {\"Category Set\": \"Urgent\", \"Punchlist Areas\": \"Garage\"} (add_item and update_item)"
+        },
+        "category_set": {
+          "type": "string",
+          "description": "Category set name: grouping for list_items, or the target set for create_category/rename_category/delete_category (defaults to the list's primary set)"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Item name"
+              },
+              "quantity": {
+                "type": "number",
+                "minimum": 1
+              },
+              "notes": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string",
+                "description": "Category name (resolved against the list's category sets)"
+              },
+              "categories": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Per-set assignment: { setName: categoryName }"
+              },
+              "store_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Items to add (add_items only)"
+        },
+        "store_name": {
+          "type": "string",
+          "description": "Store to assign to this item (add_item and set_item_store only; omit or leave blank to clear)"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "recipes",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "get",
+            "create",
+            "delete",
+            "import_url",
+            "normalize"
+          ],
+          "description": "The recipe action to perform"
+        },
+        "name": {
+          "type": "string",
+          "description": "Recipe name (required for get, create, delete)"
+        },
+        "search": {
+          "type": "string",
+          "description": "Search query to filter recipes (list only)"
+        },
+        "ingredients": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Ingredient name, e.g. 'flour'"
+              },
+              "quantity": {
+                "type": "string",
+                "description": "Quantity with unit, e.g. '2 cups'"
+              }
+            },
+            "required": [
+              "name",
+              "quantity"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Ingredients with name and quantity (create only)"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Preparation steps in order (create only)"
+        },
+        "note": {
+          "type": "string",
+          "description": "Recipe notes (create only)"
+        },
+        "source_name": {
+          "type": "string",
+          "description": "Source name (create only)"
+        },
+        "source_url": {
+          "type": "string",
+          "description": "Source URL (create only)"
+        },
+        "prep_time": {
+          "type": "number",
+          "description": "Prep time in minutes (create only)"
+        },
+        "cook_time": {
+          "type": "number",
+          "description": "Cook time in minutes (create only)"
+        },
+        "servings": {
+          "type": "string",
+          "description": "Servings, e.g. '4' or '4-6' (create only)"
+        },
+        "url": {
+          "type": "string",
+          "description": "URL to import recipe from (import_url, normalize)"
+        },
+        "text": {
+          "type": "string",
+          "description": "Raw recipe text to parse (normalize only)"
+        },
+        "save": {
+          "type": "boolean",
+          "description": "If true, also save normalized recipe to AnyList (normalize only, default false)"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "meal_plan",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list_events",
+            "list_labels",
+            "create_event",
+            "delete_event"
+          ],
+          "description": "The meal plan action to perform"
+        },
+        "date": {
+          "type": "string",
+          "description": "Date in YYYY-MM-DD format (required for create_event)"
+        },
+        "start_date": {
+          "type": "string",
+          "description": "Filter events on or after this date, YYYY-MM-DD (list_events only)"
+        },
+        "end_date": {
+          "type": "string",
+          "description": "Filter events on or before this date, YYYY-MM-DD (list_events only)"
+        },
+        "title": {
+          "type": "string",
+          "description": "Event title (create_event; use this OR recipe_id)"
+        },
+        "recipe_id": {
+          "type": "string",
+          "description": "Recipe ID to link (create_event)"
+        },
+        "label_id": {
+          "type": "string",
+          "description": "Label ID for meal type (create_event)"
+        },
+        "details": {
+          "type": "string",
+          "description": "Additional notes (create_event)"
+        },
+        "event_id": {
+          "type": "string",
+          "description": "Event ID to delete (required for delete_event)"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "recipe_collections",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list",
+            "create",
+            "delete"
+          ],
+          "description": "The collection action to perform"
+        },
+        "name": {
+          "type": "string",
+          "description": "Collection name (required for create, delete)"
+        },
+        "recipe_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Recipe names to include (create only)"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  }
+]
