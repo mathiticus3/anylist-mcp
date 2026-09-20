@@ -1,19 +1,19 @@
 # Vector72 AnyList campaign handback
 
-2026-09-20 campaign handback. **Separate bounded writer follow-up:** runtime1.9.3/b59db0a deployed, separate bounded writer credential provisioned and privately delivered after direct authorization; see [CANARY-WRITER.md](CANARY-WRITER.md) and latest DEPLOYMENT.md; setup/discovery authorization only, no live canary writes. **Later read-only-client follow-up:** runtime1.9.2/f085f2d, dedicated gina_canary_readonly registration. See [CANARY-READONLY.md](CANARY-READONLY.md) and latest DEPLOYMENT.md receipt; no canary writes granted. AnyList is still the source of truth. No Trilium/mcp.vector72.io/Caddy/Compose runtime changes, no household migration, no Gina canary execution or permission expansion.
+2026-09-20 campaign handback. **Current follow-up:** MCP1.9.4/209b39c deployed; separate fixed-target reader and add-only credentials privately delivered after direct authorization. Provider complete-reader and add-discovery gates pass; Gina owns independent qualification and actual action execution. See [BOUNDED-SHOPPING.md](BOUNDED-SHOPPING.md) and latest [DEPLOYMENT.md](DEPLOYMENT.md). Earlier canary identities remain unchanged. AnyList remains the source of truth; no Trilium/mcp.vector72.io/Caddy/Compose runtime changes or household migration.
 
 | Phase | Result | Delivered / remaining |
 |---|---|---|
 | Discovery | COMPLETE | Live versions, consumer inventory, schemas, health, source/library gaps and rollback recorded before changes. |
 | 1: client parity | COMPLETE for qualified client capabilities |40 bounded stable actions, typed errors/canonical IDs, compatible legacy defaults, preservation-safe recipe updates, favorites and membership support, repaired category delete. Explicit unsupported/unsafe gaps remain documented, not advertised. |
-| 2: GPT Actions | COMPLETE deployed API; private GPT UI setup pending |30 semantic operations cover40 stable actions; dedicated revocable bearer; HTTPS OpenAPI3.1/health/readiness/privacy; actual public read/write gate passed. Owner imports schema/pastes key in GPT editor. |
+| 2: GPT Actions | COMPLETE deployed API; owner confirmed GPT works |30 semantic operations cover40 stable actions; dedicated revocable bearer; HTTPS OpenAPI3.1/health/readiness/privacy; actual public read/write gate passed. Owner confirmed meal-calendar functionality works. |
 | 3: selective expansion | COMPLETE bounded scope |Current store-price and folder reads implemented/tested/deployed, individually disabled by default, no GPT exposure. Historical pricing/barcode blocked by endpoint evidence; remaining candidates deferred or verified-read-only/not implemented. |
 
 ## Versions and receipts
 
 - Client0.8.6 / `1d3c9816c4ecfc3b2d8c5c48dd35619b125381c3` unchanged.
-- MCP1.9.1; GPT adapter1.0.0; deployed runtime `26392a003c312789c0a531bdd549b992e8bb4441`.
-- Final image `sha256:edae35c2d514c161ac2ecbc9fc3efcdbf89ac78dcc35c54854a421df82d94623`.
+- MCP1.9.4; GPT adapter1.0.0; deployed runtime `209b39c255fa979614926a0658cc2234bf1ec2a4`.
+- Current image `sha256:0e56f3da4f306d484386ea4cdd58fc27d4fc0d310c9cf6c3a0b96d0d03070b0d`.
 - Host vector72-2, service anylist-mcp, source `/home/deploy/web-caddy/anylist-upstream`.
 - [Phase1 PR5](https://github.com/mathiticus3/anylist-mcp/pull/5): codex/anylist-stable-parity; runtime972b019, accepted test/docsff40cfb; merged into fix/make-mcp-interoperability.
 - [Phase2 PR6](https://github.com/mathiticus3/anylist-mcp/pull/6): codex/anylist-gpt-actions; runtime7289282, receiptb677aeb; merged into the same production lineage.
@@ -30,18 +30,18 @@
 
 ## Regression proof
 
-135 Node tests;18 release-driver tests; CI green on20/24/26. Phase1 actual MCP67 calls and Phase2 public HTTPS78 checks passed. Live receipt JSON and CI links: [DEPLOYMENT.md](DEPLOYMENT.md). Legacy MCP and restricted-profile unit regressions pass. Actual unchanged punchlist-sync authenticated structured reads passed at every release (final93 items, writes0); timer active, last exit0. Disposable prefix cleanup and fresh absence checks passed; no ordinary household records were unnecessarily changed. Experimental qualification made0 provider writes and left flags absent. All acceptance OAuth tokens were deleted. Six peer services and protected config state were verified unchanged by the deployment driver.
+Current source160 Node tests;21 release-driver tests; CI green on20/24/26. Phase1 actual MCP67 calls and Phase2 public HTTPS78 checks passed. Live receipt JSON and CI links: [DEPLOYMENT.md](DEPLOYMENT.md). Legacy MCP and restricted-profile unit regressions pass. Actual unchanged punchlist-sync authenticated structured reads passed at every release (final93 items, writes0); timer active, last exit0. Disposable prefix cleanup and fresh absence checks passed; no ordinary household records were unnecessarily changed. Experimental qualification made0 provider writes and left flags absent. All acceptance OAuth tokens were deleted. Six peer services and protected config state were verified unchanged by the deployment driver.
 
 ## Private GPT setup
 
 Name **Vector72 AnyList**. Schema [https://anylist.vector72.io/openapi.json](https://anylist.vector72.io/openapi.json). Authentication **API Key → Bearer**, sending `Authorization: Bearer <dedicated key>`. Privacy [https://anylist.vector72.io/privacy](https://anylist.vector72.io/privacy). No OAuth or callback URL. Secret name `ANYLIST_GPT_ACTIONS_KEY`, box-side `/data/.env.gpt-actions` inside anylist-mcp's persistent volume; verifier `/data/gpt-actions.json`. No secret values in this handback. Independently revoke/rotate through scripts/create-gpt-key.js.
 
-Shortest path: ChatGPT → Explore GPTs → Create → Configure → name above → Actions/Create new action → Import from URL above → Authentication/API Key/Bearer → paste owner-retrieved key → privacy URL above → save **Only me** → test getServiceStatus and listShoppingLists. [ACTIONS.md](ACTIONS.md) gives the exact local clipboard command and suggested instructions. The private GPT has not been created or UI-tested by this campaign.
+Shortest path: ChatGPT → Explore GPTs → Create → Configure → name above → Actions/Create new action → Import from URL above → Authentication/API Key/Bearer → paste owner-retrieved key → privacy URL above → save **Only me** → test getServiceStatus and listShoppingLists. [ACTIONS.md](ACTIONS.md) gives the exact local clipboard command and suggested instructions. The owner subsequently confirmed GPT meal-calendar functionality works; this agent did not perform the private editor UI steps.
 
 ## Health and rollback
 
 [MCP](https://anylist.vector72.io/mcp) keeps OAuth; unauthenticated401 expected. [healthz](https://anylist.vector72.io/healthz) public liveness; /readyz requires GPT bearer and checks fresh AnyList readiness. /actions paths use that separate bearer.
 
-**Current rollback after the dedicated-client follow-up:** first revoke gina-canary-harness with `docker exec anylist-mcp node scripts/provision-canary-client.js --revoke` and remove its local private delivery copy if one was approved. Then use `/home/deploy/anylist-release-f085f2d2/deploy_anylist.py rollback --candidate f085f2d29317fdc658be0b9a98a0dfead176d44d`. This guarded driver refuses old-code restoration while a custom-profile registration exists. Never use retained older drivers while the canary client is registered: old code would treat its unknown profile as full. Prior runtime26392a0 is retained. Experiments alone need only flag removal, already the default. Older checkpoints preserve Phase1 and original baseline201e1fa. Encrypted backup paths/hashes and exact previous images are in DEPLOYMENT.md/BASELINE.md; keys remain box-side. No proxy rollback needed.
+**Current rollback:** revoke both separate bounded-shopping clients with `docker exec anylist-mcp node scripts/provision-bounded-shopping.js read --revoke` and the equivalent `add --revoke`; remove their local private copies. Then use `/home/deploy/anylist-release-209b39c2/deploy_anylist.py rollback --candidate 209b39c255fa979614926a0658cc2234bf1ec2a4`. This driver preserves the existing canary profiles and refuses restore while either new bounded identity remains. Baselineb59db0a/image5c1cab2c retained. Do not use older drivers or revoke unrelated identities. Experiments need only flag removal, already the default. See latest DEPLOYMENT.md for verified encrypted backups and checkpoints; keys remain box-side. No proxy rollback needed.
 
-The Gina coordination artifact is separate operational evidence. Provider shopping readiness is true for an authorized full-profile adapter; existing restricted Gina credentials still lack exact-ID removal. No harness credential was created or silently reused, and readiness does not authorize its canary.
+The Gina coordination artifact records separate provider and harness evidence. Original exact add/read/remove/read canary was independently executed and accepted by Gina under its own explicit action approvals; this provider task did not perform it. Both later household reader/add-only credentials are delivered. Provider readiness never substitutes for Gina's independent qualification or exact-action authorization; no household add was performed during the new setup.
