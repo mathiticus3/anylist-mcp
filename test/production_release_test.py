@@ -24,9 +24,17 @@ build_spec.loader.exec_module(build_release)
 
 
 class ProductionReleaseTests(unittest.TestCase):
+    def test_legacy_rollback_refuses_new_restricted_profile_before_restoring(self):
+        prod = {"volume_name": "test-volume"}
+        with patch.object(deploy_anylist, "run", return_value='{"restrictedClients":1}'):
+            with self.assertRaisesRegex(deploy_anylist.ReleaseError, "revoke dedicated"):
+                deploy_anylist.assert_legacy_rollback_profiles(prod, "old-image")
+        with patch.object(deploy_anylist, "run", return_value='{"restrictedClients":0}'):
+            deploy_anylist.assert_legacy_rollback_profiles(prod, "old-image")
+
     def test_release_spec_is_exactly_scoped_to_live_anylist(self):
         release = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(release["expected_baseline"]["commit"], "7289282f09d787f6bb78f18f9da656e2fa1fae63")
+        self.assertEqual(release["expected_baseline"]["commit"], "26392a003c312789c0a531bdd549b992e8bb4441")
         self.assertIsNone(release["expected_baseline"]["branch"])
         self.assertEqual(release["production"]["source_directory"], "/home/deploy/web-caddy/anylist-upstream")
         self.assertEqual(release["production"]["volume_name"], "web-caddy_anylist-mcp-data")

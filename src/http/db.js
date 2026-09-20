@@ -235,11 +235,11 @@ export function countPublicOAuthClients() {
   `).get().count;
 }
 
-export function createConfidentialClient({ clientId, clientSecretHash, userId, clientName }) {
+export function createConfidentialClient({ clientId, clientSecretHash, userId, clientName, profile = "full", source = null }) {
   getDb().prepare(`
-    INSERT INTO oauth_clients (client_id, client_secret_hash, user_id, client_name)
-    VALUES (?, ?, ?, ?)
-  `).run(clientId, clientSecretHash, userId, clientName || null);
+    INSERT INTO oauth_clients (client_id, client_secret_hash, user_id, client_name, profile, source)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(clientId, clientSecretHash, userId, clientName || null, profile, source);
   return getDb().prepare("SELECT * FROM oauth_clients WHERE client_id = ?").get(clientId);
 }
 

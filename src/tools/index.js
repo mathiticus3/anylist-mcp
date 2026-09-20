@@ -1,3 +1,5 @@
+import {CANARY_PROFILE} from '../profiles/canary-policy.js';
+import {registerCanaryShopping} from '../profiles/canary-shopping.js';
 import {registerExperimental} from '../experimental/tools.js';
 import {stableServer, registerService} from '../stable/tools.js';
 import { register as registerHealth } from "./health.js";
@@ -17,6 +19,7 @@ import { register as registerRecipeCollections } from "./recipe-collections.js";
  * @param {{profile?: string}} options OAuth-client tool profile.
  */
 export function registerAllTools(server, getClient, options = {}) {
+  if(options.profile===CANARY_PROFILE){registerCanaryShopping(server,getClient);return;}
   const rawServer=server;
   server=stableServer(server,getClient,options);
   if (options.profile === "gina") {

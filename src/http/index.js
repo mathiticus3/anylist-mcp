@@ -1,3 +1,4 @@
+import {CANARY_PROFILE} from '../profiles/canary-policy.js';
 import {mountActions} from '../actions/router.js';
 import {VERSION} from '../stable/capabilities.js';
 import dotenv from "dotenv";
@@ -91,7 +92,7 @@ app.use((req, res, next) => {
       `${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms) ` +
       `session:${req.session?.id?.slice(0, 8) ?? "none"} ` +
       `user:${req.userId ?? req.session?.userId ?? "-"} ` +
-      `client:${req.clientId?.slice(0, 8) ?? "-"} source:${req.actorSource ?? "-"}`,
+      `client:${req.clientProfile===CANARY_PROFILE?"canary-redacted":req.clientId?.slice(0, 8) ?? "-"} source:${req.actorSource ?? "-"}`,
     );
   });
   next();
