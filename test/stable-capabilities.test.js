@@ -101,10 +101,10 @@ test('normalization and version manifest require no secrets',async()=>{
   const {c}=fixture();const res=await executeClientCapability(c,'recipes','normalize',{text:'Test Soup\nIngredients\n1 cup water\nInstructions\nBoil water.'});assert.ok(res.recipe.name);assert.equal(res.saved,false);
   const manifest=await executeClientCapability(c,'service','capabilities',{});assert.ok(manifest.clientCommit);assert.equal(manifest.capabilities.length,CAPABILITIES.length);
 });
-test('existing category removal carries its typed original category and group',async()=>{
+test('existing category removal sends the official single-category group delta',async()=>{
   const {createRequire}=await import('node:module');const require=createRequire(import.meta.url);const List=require('../anylist-js/lib/list');
   const {raw}=fixture();let operation;
   const list=new List({identifier:'list1',name:'Test',items:[]},{client:{post:async(path,{body})=>{assert.equal(path,'data/shopping-lists/update-v2');operation=raw.protobuf.PBListOperationList.decode(body._streams.find(Buffer.isBuffer)).operations[0];}},protobuf:raw.protobuf,uid:'user',stores:[]});
   list.categoryGroups=[{identifier:'group',categories:[{identifier:'category',name:'Disposable'}]}];
-  await list.removeCategory('category');assert.equal(operation.metadata.handlerId,'remove-category');assert.equal(operation.originalCategory.identifier,'category');assert.equal(operation.originalCategory.categoryGroupId,'group');
+  await list.removeCategory('category');assert.equal(operation.metadata.handlerId,'remove-category-ids');assert.equal(operation.metadata.operationClass,4);assert.equal(operation.updatedCategoryGroup.identifier,'group');assert.deepEqual(operation.updatedCategoryGroup.categories.map(c=>c.identifier),['category']);
 });
