@@ -1,6 +1,6 @@
 # Separate fixed-target shopping reader and add-only writer
 
-Contract note: this document records deployed bounded-shopping.v1. The source-only v2 active-item correction and migration are specified in [ACTIVE-ITEMS.md](ACTIVE-ITEMS.md); v2 is not deployed.
+Contract note: this document records the original bounded-shopping.v1. The now-deployed v2 active-item correction, current schemas and migration are specified in [ACTIVE-ITEMS.md](ACTIVE-ITEMS.md). The v1 collision rule and credentials below are historical; both v1 bounded identities have been revoked.
 
 Status: deployed and both private credentials delivered after owner authorization on2026-09-20. Source209b39c/MCP1.9.4, [PR12](https://github.com/mathiticus3/anylist-mcp/pull/12) merged. Provider live reader qualification passed before enabling add; add discovery made zero tool calls. Gina owns independent qualification and exact-action approval. No household add was performed by this provider task. See latest [deployment receipt](DEPLOYMENT.md) and [sanitized evidence](bounded-shopping-receipt.json). Household target and exact emitted schemas remain private; all existing scopes are unchanged.
 
