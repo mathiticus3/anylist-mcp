@@ -3,8 +3,8 @@
   "info": {
     "title": "Vector72 AnyList",
     "version": "1.0.0",
-    "description": "Private owner Actions projection over AnyList MCP 1.9.1. AnyList is the source of truth. Select exact IDs on ambiguity. Add item is an upsert. Meal update supports details only.",
-    "x-mcp-version": "1.9.1"
+    "description": "Private owner Actions projection over AnyList MCP 1.9.2. AnyList is the source of truth. Select exact IDs on ambiguity. Add item is an upsert. Meal update supports details only.",
+    "x-mcp-version": "1.9.2"
   },
   "servers": [
     {

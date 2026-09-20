@@ -778,6 +778,22 @@ def oauth_boundary_checks(prod: dict) -> None:
         raise ReleaseError("unallowlisted OAuth DCR was not rejected")
 
 
+def assert_legacy_rollback_profiles(prod: dict, rollback_image: str) -> None:
+    # Older runtimes treat unknown profiles as full. Never restore one while a
+    # newly restricted machine identity still exists, even with no active tokens.
+    code = """const Database=require('better-sqlite3');
+const db=new Database('/data/anylist-mcp.db',{readonly:true});
+const n=db.prepare("SELECT COUNT(*) AS n FROM oauth_clients WHERE profile NOT IN ('full','gina')").get().n;
+process.stdout.write(JSON.stringify({restrictedClients:Number(n)}));"""
+    result = json.loads(run([
+        "docker", "run", "--rm", "--network", "none", "--entrypoint", "node",
+        "--mount", f"type=volume,src={prod['volume_name']},dst=/data,readonly",
+        rollback_image, "-e", code,
+    ]))
+    if result.get("restrictedClients") != 0:
+        raise ReleaseError("revoke dedicated canary/custom-profile clients before legacy rollback; old code would broaden their authority")
+
+
 def rollback(spec: dict, directory: Path, *, automatic: bool = False) -> None:
     snapshot = load_json(directory / "snapshot.json")
     status = load_json(directory / "status.json")
@@ -786,6 +802,7 @@ def rollback(spec: dict, directory: Path, *, automatic: bool = False) -> None:
     cwd = Path(prod["compose_directory"])
     if snapshot.get("candidate_commit") != directory.name:
         raise ReleaseError("release-state candidate identity is inconsistent")
+    assert_legacy_rollback_profiles(prod, snapshot["container"]["image_id"])
     emit("restoring source and image checkpoints")
     run(["docker", "image", "tag", snapshot["container"]["image_id"], prod["image"]])
     switch_to_source_checkpoint(source, snapshot["source"])

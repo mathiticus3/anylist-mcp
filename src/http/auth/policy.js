@@ -1,3 +1,4 @@
+import {CANARY_PROFILE} from '../../profiles/canary-policy.js';
 export const GINA_OPENWEBUI_REDIRECT_URI =
   "https://cdlms.tail767e55.ts.net:8443/oauth/clients/mcp:anylist/callback";
 export const MAKE_MCP_REDIRECT_URI = "https://www.make.com/oauth/cb/mcp";
@@ -126,6 +127,7 @@ export function validateClientRedirectUri(client, redirectUri, allowedRedirectUr
   if (!client) {
     throw new OAuthPolicyError("invalid_client", "Unknown OAuth client.", 401);
   }
+  if(client.profile===CANARY_PROFILE)throw new OAuthPolicyError("unauthorized_client", "This dedicated machine client supports client_credentials only.", 403);
   validateRedirectUriSyntax(redirectUri);
 
   if (client.redirect_uri) {

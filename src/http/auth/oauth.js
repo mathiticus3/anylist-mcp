@@ -1,3 +1,4 @@
+import {CANARY_PROFILE} from '../../profiles/canary-policy.js';
 import { Router } from "express";
 import { createHash, randomBytes, randomUUID } from "crypto";
 import bcrypt from "bcrypt";
@@ -334,7 +335,7 @@ async function handleClientCredentialsGrant(req, res) {
     scope: "mcp",
   });
 
-  console.log(`[oauth] client_credentials token issued for client_id=${client_id.slice(0, 8)}… user_id=${client.user_id}`);
+  console.log(client.profile===CANARY_PROFILE ? "[oauth] client_credentials issued for dedicated read-only canary profile" : `[oauth] client_credentials token issued for client_id=${client_id.slice(0, 8)}… user_id=${client.user_id}`);
   res.json({
     access_token: accessToken,
     token_type: "Bearer",
@@ -494,6 +495,7 @@ export function requireBearerToken(req, res, next) {
     res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", error="invalid_token"`);
     return res.status(401).json({ error: "invalid_token" });
   }
+  if(!["full","gina",CANARY_PROFILE].includes(client.profile||"full"))return res.status(401).json({error:"invalid_client_profile"});
   const callbackPolicy = policyForRedirectUri(client.redirect_uri);
   req.userId = record.user_id;
   req.clientId = record.client_id;
