@@ -1,3 +1,5 @@
+import {mountActions} from '../actions/router.js';
+import {VERSION} from '../stable/capabilities.js';
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -57,6 +59,8 @@ function validateEnv() {
 
 const app = express();
 
+app.set("trust proxy", 1);
+mountActions(app,{getClientForUser:getOrCreateSession});
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
@@ -163,7 +167,7 @@ const mcpSessions = new Map(); // sessionId → { server, transport }
 function createMcpServer(userId, clientProfile = "full") {
   const mcpServer = new McpServer({
     name: clientProfile === "gina" ? "anylist-mcp-gina" : "anylist-mcp-server",
-    version: "2.1.0",
+    version: VERSION,
   });
   registerAllTools(mcpServer, () => getOrCreateSession(userId), { profile: clientProfile });
   return mcpServer;

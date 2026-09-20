@@ -1,0 +1,619 @@
+{
+  "ok": true,
+  "transport": "https-actions",
+  "prefix": "V72-CAMPAIGN-1789931838895-",
+  "receipts": [
+    {
+      "httpAuth": true,
+      "readiness": true,
+      "openapi": true,
+      "privacy": true,
+      "ok": true
+    },
+    {
+      "inventory": [
+        {
+          "name": "health_check"
+        },
+        {
+          "name": "shopping",
+          "actions": [
+            "list_lists",
+            "list_items",
+            "list_categories",
+            "add_item",
+            "add_items",
+            "update_item",
+            "set_item_store",
+            "check_item",
+            "uncheck_item",
+            "delete_item",
+            "create_category",
+            "rename_category",
+            "delete_category",
+            "get_favorites",
+            "get_recents",
+            "list_stores",
+            "add_favorite",
+            "update_favorite",
+            "remove_favorite"
+          ]
+        },
+        {
+          "name": "recipes",
+          "actions": [
+            "list",
+            "get",
+            "create",
+            "delete",
+            "import_url",
+            "normalize",
+            "update"
+          ]
+        },
+        {
+          "name": "meal_plan",
+          "actions": [
+            "list_events",
+            "list_labels",
+            "create_event",
+            "delete_event",
+            "update_event"
+          ]
+        },
+        {
+          "name": "recipe_collections",
+          "actions": [
+            "list",
+            "create",
+            "delete",
+            "get",
+            "add_recipe",
+            "remove_recipe"
+          ]
+        },
+        {
+          "name": "service",
+          "actions": [
+            "status",
+            "capabilities",
+            "refresh"
+          ]
+        }
+      ],
+      "ok": true
+    },
+    {
+      "tool": "health_check",
+      "action": "health",
+      "legacy": true,
+      "transport": "mcp",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "list_lists",
+      "legacy": true,
+      "transport": "mcp",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "list_lists",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "list_items",
+      "legacy": true,
+      "transport": "mcp",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "list_categories",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "list_stores",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "get_recents",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "get_favorites",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "add_item",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "add_items",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "update_item",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "list_items",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "check_item",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "service",
+      "action": "refresh",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "list_items",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "uncheck_item",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "service",
+      "action": "refresh",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "list_items",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "set_item_store",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "add_favorite",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "update_favorite",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "service",
+      "action": "refresh",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "get_favorites",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "remove_favorite",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "list_categories",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "create_category",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "rename_category",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "delete_category",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "create",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "update",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "get",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "list",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "normalize",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "import_url",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "normalize",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipe_collections",
+      "action": "create",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipe_collections",
+      "action": "add_recipe",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipe_collections",
+      "action": "get",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipe_collections",
+      "action": "remove_recipe",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipe_collections",
+      "action": "get",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "meal_plan",
+      "action": "list_labels",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "meal_plan",
+      "action": "create_event",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "meal_plan",
+      "action": "update_event",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "meal_plan",
+      "action": "list_events",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "meal_plan",
+      "action": "delete_event",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipe_collections",
+      "action": "delete",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "delete",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "delete_item",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "list",
+      "legacy": true,
+      "transport": "mcp",
+      "ok": true
+    },
+    {
+      "tool": "recipe_collections",
+      "action": "list",
+      "legacy": true,
+      "transport": "mcp",
+      "ok": true
+    },
+    {
+      "tool": "meal_plan",
+      "action": "list_events",
+      "legacy": true,
+      "transport": "mcp",
+      "ok": true
+    },
+    {
+      "tool": "meal_plan",
+      "action": "list_labels",
+      "legacy": true,
+      "transport": "mcp",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "create",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "update",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "create",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "update",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "delete",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "delete",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "httpAmbiguity": true,
+      "httpMalformed": true,
+      "ok": true
+    },
+    {
+      "tool": "service",
+      "action": "status",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "service",
+      "action": "capabilities",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "delete",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "list_items",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "delete_item",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "delete_item",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "get_favorites",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "list_categories",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipe_collections",
+      "action": "list",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "list",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "meal_plan",
+      "action": "list_events",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "list_items",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "get_favorites",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "shopping",
+      "action": "list_categories",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipes",
+      "action": "list",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "recipe_collections",
+      "action": "list",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    },
+    {
+      "tool": "meal_plan",
+      "action": "list_events",
+      "legacy": false,
+      "transport": "https-actions",
+      "ok": true
+    }
+  ],
+  "cleanupErrors": [],
+  "temporaryBearerDeleted": true
+}

@@ -1,6 +1,6 @@
 {
   "name": "anylist-mcp",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "MCP server for AnyList shopping list integration",
   "main": "src/server.js",
   "type": "module",
@@ -37,10 +37,14 @@
     "protobufjs": "8.7.2",
     "reconnecting-websocket": "4.4.0",
     "uuid": "file:compat/uuid",
-    "ws": "7.5.13"
+    "ws": "7.5.13",
+    "zod": "3.25.76",
+    "zod-to-json-schema": "3.25.2"
   },
   "devDependencies": {
-    "@anthropic-ai/mcpb": "^2.1.2"
+    "@anthropic-ai/mcpb": "^2.1.2",
+    "@apidevtools/swagger-parser": "12.1.0",
+    "ajv": "8.20.0"
   },
   "overrides": {
     "tmp": "0.2.7"
