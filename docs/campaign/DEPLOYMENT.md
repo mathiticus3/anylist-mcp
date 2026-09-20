@@ -43,3 +43,7 @@ Runtime `7289282f09d787f6bb78f18f9da656e2fa1fae63`, package1.9.0 / adapter1.0.0 
 Dedicated key provisioned in existing /data volume, no secret printed. Mode600 raw .env plus verifier are backed up encrypted in `/home/deploy/web-caddy/backups/anylist-campaign-20260920/gpt-actions-credential.tar.enc`, SHA256 `5a7b2e18a40c088705077e154b695e150568bcd64cbe0f606716d9184c583edd`; decrypt/list verified. Uses separate recovery.key already retained for the campaign; no secret in git. Revocation is independent of AnyList/MCP credentials.
 
 Phase3 is now permitted. Private GPT editor import/key paste remains an owner UI setup step; no private GPT creation claim is made. Exact setup is ACTIONS.md.
+
+## Phase 3 bounded preparation
+
+Phase2 PR6 merged after final receipt CI35531963817 passed. Read-only protocol probe confirmed current price records and complete folder snapshots. Isolated client-layer extensions and a separate flag-gated read-only MCP tool implement only those two candidates. Flags default absent/off; stable GPT registry unchanged; no experimental mutation or Gina canary execution. Full evidence/classification is EXPERIMENTAL.md. Live experimental qualification and final deployment receipts pending.
