@@ -8,7 +8,7 @@ export const BOUNDED_ADD='gina_bounded_add';
 export const BOUNDED_PROFILES=Object.freeze([BOUNDED_READ,BOUNDED_ADD]);
 export const MAX_ITEMS=10000;
 export const MAX_RESULT_BYTES=8*1024*1024;
-export const CONTRACT_VERSION='bounded-shopping.v1';
+export const CONTRACT_VERSION='bounded-shopping.v2';
 const bindingSchema=z.object({schemaVersion:z.literal(1),listId:z.string().regex(/^[a-f0-9]{32}$/),readerEnabled:z.boolean(),addEnabled:z.boolean()}).strict();
 export function bindingFile(){return path.join(process.env.DATA_DIR||'/data','gina-bounded-shopping.json');}
 export function loadBoundedBinding(){
