@@ -1,6 +1,6 @@
 # Bounded shopping v2: new active items, preserving checked history
 
-Status: source preparation only, MCP1.9.5 candidate. Production remains209b39c/MCP1.9.4 and bounded-shopping.v1 with both delivered v1 identities. No v2 deployment, replacement registration, credential delivery or household mutation has occurred. Gina owns harness policy/adapter/journal and independently reviews this provider contract before rollout.
+Status: deployed and both replacement credentials privately delivered after owner Proceed and independent Gina source review. Runtime3dd4147d/MCP1.9.5, bounded-shopping.v2; [PR14](https://github.com/mathiticus3/anylist-mcp/pull/14) merged. New reader qualification passed before add-only discovery, which invoked zero tools. This provider task performed no household mutations. Exact receipts: [DEPLOYMENT.md](DEPLOYMENT.md), [active-shopping-receipt.json](active-shopping-receipt.json). Gina owns independent harness qualification and action execution.
 
 ## Change
 
@@ -20,10 +20,10 @@ Canonical identifier remains item identity. Projected snapshot validation refuse
 
 Exact target-bearing schemas, candidate hashes and target binding belong in the private provider review artifact. No household name/ID or credentials are committed.
 
-## Smallest guarded migration (not executed)
+## Guarded migration procedure (executed under reviewed owner authorization)
 
 1. Freeze both new harness identities with actions0/enabled0. Independently review exact source, CI, schema, selected binding and revised collision/postcondition policy.
-2. Under explicit correction-rollout/setup authorization, reconfirm production209b39c/image0e56f3da, source drift, health, peer fingerprints and encrypted consistent database/private-file backups. Preserve original canary identities and the dedicated GPT key.
+2. Under the recorded correction-rollout/setup authorization, reconfirm production209b39c/image0e56f3da, source drift, health, peer fingerprints and encrypted consistent database/private-file backups. Preserve original canary identities and the dedicated GPT key.
 3. Disable add in the private policy. Revoke only gina-bounded-shopping-add and gina-bounded-shopping-read through their supported scripts; remove or retire their exact local v1 files so they cannot be mistaken for v2. No other clients are revoked. These two identities are intentionally unavailable during the bounded migration.
 4. Deploy the reviewed candidate from git using its guarded release driver scoped to baseline209b39c. The private policy target/schemaVersion1 remains unchanged; contract version is code-defined. Keep reader enabled and add disabled.
 5. Provision the new reader once through the existing script (second invocation must be idempotent). Use its own grant to verify version, contract literal/schema and binding; perform two complete fresh snapshots, strict boolean states and size/order/preservation checks. Deliver the exact reader file privately only under approved delivery authorization.
@@ -38,4 +38,4 @@ Set addEnabled=false to stop new writes; readerEnabled=false stops both. In-flig
 
 ## Validation
 
-Synthetic tests cover checked-only history allowing one fresh ID with all prior records unchanged, unchecked and mixed matches refusing before creation/dispatch, malformed checked states failing closed, generated duplicate IDs refusing, acknowledgement ID drift remaining UNKNOWN, v1 digest/schema rejection, exact pinned-library protobuf new-item operation preserving history, real local HTTP schema/2509-item transport, old-token/new-token MCP refusal and conflicting reprovision refusal. Release tests cover current baseline and pre-restore revocation enforcement. No production mutation is used to qualify source preparation.
+Synthetic tests cover checked-only history allowing one fresh ID with all prior records unchanged, unchecked and mixed matches refusing before creation/dispatch, malformed checked states failing closed, generated duplicate IDs refusing, acknowledgement ID drift remaining UNKNOWN, v1 digest/schema rejection, exact pinned-library protobuf new-item operation preserving history, real local HTTP schema/2509-item transport, old-token/new-token MCP refusal and conflicting reprovision refusal. Release tests cover current baseline and pre-restore revocation enforcement. 165 Node tests and22 release tests passed; exacthead CI35544131045 passed20/24/26. No production mutation was used for source or provider setup qualification.

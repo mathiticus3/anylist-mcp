@@ -1,0 +1,132 @@
+{
+  "runtime": "3dd4147d2b1bdf729f629b05224878c50c471aff",
+  "version": "1.9.5",
+  "contract": "bounded-shopping.v2",
+  "image": "sha256:0d359b33632e3de2776ce581fa5e204f98638958f30fdffc1af7b5ce3c978492",
+  "sourcePr": "https://github.com/mathiticus3/anylist-mcp/pull/14",
+  "sourceMerge": "491a9b4e051f345079b989a6a87c621f7f790464",
+  "ci": "https://github.com/mathiticus3/anylist-mcp/actions/runs/35544131045",
+  "nodeTests": 165,
+  "releaseTests": 22,
+  "providerWrites": 0,
+  "permissionMutationProbes": 0,
+  "privateDelivery": {
+    "complete": true,
+    "replacedOnlyRevokedV1Credentials": true,
+    "fileMode": "0600",
+    "directoryMode": "0700",
+    "secretPrinted": false
+  },
+  "qualifications": [
+    {
+      "ok": true,
+      "role": "read",
+      "observedAt": "2026-09-20T23:20:57.625Z",
+      "clientName": "gina-bounded-shopping-read",
+      "profile": "gina_bounded_read",
+      "clientIdSha256": "25598dce6c3b81c46eb4a6998711ebe7cc3a2bcf5efe9c9cb490dff66b76df74",
+      "bindingSha256": "e4700b7183a06a292253310415237ee9e35025021b067a1d222fd600699d75da",
+      "serverVersion": "1.9.5",
+      "contractVersion": "bounded-shopping.v2",
+      "schemaSha256": "cd9845cbfac6752b0a302af66bcd87c39e8838000e0dc11cee98c33dda40a083",
+      "toolCalls": 2,
+      "providerWrites": 0,
+      "permissionMutationProbes": 0,
+      "itemCounts": [
+        2509,
+        2509
+      ],
+      "checkedCounts": [
+        2496,
+        2496
+      ],
+      "wireBytes": [
+        921247,
+        921247
+      ],
+      "resultBytes": [
+        921190,
+        921190
+      ],
+      "equalObservableSnapshots": true,
+      "snapshotSha256": "cc520ffc4c54fc1a9f46ed3d346a30d8459c7c50e90eaf6e0b438862940de633",
+      "freshReadAt": [
+        "2026-09-20T23:20:56.935Z",
+        "2026-09-20T23:20:57.436Z"
+      ],
+      "secretPrinted": false,
+      "exactSchemaLocation": "Private provider coordination artifact; household target omitted from git."
+    },
+    {
+      "ok": true,
+      "role": "add",
+      "observedAt": "2026-09-20T23:21:49.936Z",
+      "clientName": "gina-bounded-shopping-add",
+      "profile": "gina_bounded_add",
+      "clientIdSha256": "845a1a20d698a2872f503f207817ef318bd3e876eb29c107dc34cb567aaa7d35",
+      "bindingSha256": "e4700b7183a06a292253310415237ee9e35025021b067a1d222fd600699d75da",
+      "serverVersion": "1.9.5",
+      "contractVersion": "bounded-shopping.v2",
+      "schemaSha256": "e281a41a6f1a1265dcd60dd64180071070362706ae4659dd89ce6b24fdc1181e",
+      "toolCalls": 0,
+      "providerWrites": 0,
+      "permissionMutationProbes": 0,
+      "secretPrinted": false,
+      "exactSchemaLocation": "Private provider coordination artifact; household target omitted from git."
+    }
+  ],
+  "regressions": {
+    "canaryReaderItemCounts": [
+      2,
+      2
+    ],
+    "canaryWriterToolCalls": 0,
+    "canaryIdentitiesUnchanged": true,
+    "punchlist": {
+      "ok": true,
+      "consumer": "punchlist-sync",
+      "items": 93,
+      "providerWrites": 0,
+      "triliumWrites": 0
+    },
+    "gpt": {
+      "gptAuthenticatedReadiness": true,
+      "unauthenticatedRejected": true,
+      "openapiVersion": "3.1.0",
+      "operations": 30,
+      "providerWrites": 0,
+      "secretPrinted": false
+    }
+  },
+  "rollback": {
+    "previousRuntime": "209b39c255fa979614926a0658cc2234bf1ec2a4",
+    "previousImage": "sha256:0e56f3da4f306d484386ea4cdd58fc27d4fc0d310c9cf6c3a0b96d0d03070b0d",
+    "rollbackGuard": "blocked_before_restore",
+    "rollbackPerformed": false,
+    "secretPrinted": false
+  },
+  "independentHarnessQualification": {
+    "reportedBy": "Gina task",
+    "result": "PASS",
+    "client": "actual MacBook own identities",
+    "exactSchemasAndIdentitiesMatched": true,
+    "itemCounts": [
+      2509,
+      2509
+    ],
+    "checkedCounts": [
+      2496,
+      2496
+    ],
+    "equalObservableSnapshots": true,
+    "additionalPreparationReadMatched": true,
+    "requestedItemActiveMatches": 0,
+    "requestedItemCheckedHistoryMatches": 4,
+    "preparedActions": 1,
+    "approved": false,
+    "started": false,
+    "enabled": 0,
+    "writerToolCalls": 0,
+    "providerFreeze": true
+  }
+}

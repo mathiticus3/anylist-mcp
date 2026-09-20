@@ -1,6 +1,6 @@
 # Vector72 AnyList campaign handback
 
-2026-09-20 campaign handback. **Current follow-up:** MCP1.9.4/209b39c deployed; separate fixed-target reader and add-only credentials privately delivered after direct authorization. Provider complete-reader and add-discovery gates pass; Gina owns independent qualification and actual action execution. See [BOUNDED-SHOPPING.md](BOUNDED-SHOPPING.md) and latest [DEPLOYMENT.md](DEPLOYMENT.md). Earlier canary identities remain unchanged. AnyList remains the source of truth; no Trilium/mcp.vector72.io/Caddy/Compose runtime changes or household migration.
+2026-09-20 campaign handback. **Current follow-up:** MCP1.9.5/3dd4147d deployed with active-only collision semantics; separate fixed-target reader and add-only credentials privately delivered after direct authorization. Provider complete-reader and add-discovery gates pass; Gina owns independent qualification and actual action execution. See [ACTIVE-ITEMS.md](ACTIVE-ITEMS.md) and latest [DEPLOYMENT.md](DEPLOYMENT.md). Earlier canary identities remain unchanged. AnyList remains the source of truth; no Trilium/mcp.vector72.io/Caddy/Compose runtime changes or household migration.
 
 | Phase | Result | Delivered / remaining |
 |---|---|---|
@@ -12,8 +12,8 @@
 ## Versions and receipts
 
 - Client0.8.6 / `1d3c9816c4ecfc3b2d8c5c48dd35619b125381c3` unchanged.
-- MCP1.9.4; GPT adapter1.0.0; deployed runtime `209b39c255fa979614926a0658cc2234bf1ec2a4`.
-- Current image `sha256:0e56f3da4f306d484386ea4cdd58fc27d4fc0d310c9cf6c3a0b96d0d03070b0d`.
+- MCP1.9.5; GPT adapter1.0.0; deployed runtime `3dd4147d2b1bdf729f629b05224878c50c471aff`.
+- Current image `sha256:0d359b33632e3de2776ce581fa5e204f98638958f30fdffc1af7b5ce3c978492`.
 - Host vector72-2, service anylist-mcp, source `/home/deploy/web-caddy/anylist-upstream`.
 - [Phase1 PR5](https://github.com/mathiticus3/anylist-mcp/pull/5): codex/anylist-stable-parity; runtime972b019, accepted test/docsff40cfb; merged into fix/make-mcp-interoperability.
 - [Phase2 PR6](https://github.com/mathiticus3/anylist-mcp/pull/6): codex/anylist-gpt-actions; runtime7289282, receiptb677aeb; merged into the same production lineage.
@@ -30,7 +30,7 @@
 
 ## Regression proof
 
-Current source160 Node tests;21 release-driver tests; CI green on20/24/26. Phase1 actual MCP67 calls and Phase2 public HTTPS78 checks passed. Live receipt JSON and CI links: [DEPLOYMENT.md](DEPLOYMENT.md). Legacy MCP and restricted-profile unit regressions pass. Actual unchanged punchlist-sync authenticated structured reads passed at every release (final93 items, writes0); timer active, last exit0. Disposable prefix cleanup and fresh absence checks passed; no ordinary household records were unnecessarily changed. Experimental qualification made0 provider writes and left flags absent. All acceptance OAuth tokens were deleted. Six peer services and protected config state were verified unchanged by the deployment driver.
+Current source165 Node tests;22 release-driver tests; CI green on20/24/26. Phase1 actual MCP67 calls and Phase2 public HTTPS78 checks passed. Live receipt JSON and CI links: [DEPLOYMENT.md](DEPLOYMENT.md). Legacy MCP and restricted-profile unit regressions pass. Actual unchanged punchlist-sync authenticated structured reads passed at every release (final93 items, writes0); timer active, last exit0. Disposable prefix cleanup and fresh absence checks passed; no ordinary household records were unnecessarily changed. Experimental qualification made0 provider writes and left flags absent. All acceptance OAuth tokens were deleted. Six peer services and protected config state were verified unchanged by the deployment driver.
 
 ## Private GPT setup
 
@@ -42,6 +42,6 @@ Shortest path: ChatGPT → Explore GPTs → Create → Configure → name above 
 
 [MCP](https://anylist.vector72.io/mcp) keeps OAuth; unauthenticated401 expected. [healthz](https://anylist.vector72.io/healthz) public liveness; /readyz requires GPT bearer and checks fresh AnyList readiness. /actions paths use that separate bearer.
 
-**Current rollback:** revoke both separate bounded-shopping clients with `docker exec anylist-mcp node scripts/provision-bounded-shopping.js read --revoke` and the equivalent `add --revoke`; remove their local private copies. Then use `/home/deploy/anylist-release-209b39c2/deploy_anylist.py rollback --candidate 209b39c255fa979614926a0658cc2234bf1ec2a4`. This driver preserves the existing canary profiles and refuses restore while either new bounded identity remains. Baselineb59db0a/image5c1cab2c retained. Do not use older drivers or revoke unrelated identities. Experiments need only flag removal, already the default. See latest DEPLOYMENT.md for verified encrypted backups and checkpoints; keys remain box-side. No proxy rollback needed.
+**Current rollback:** revoke both separate bounded-shopping clients with `docker exec anylist-mcp node scripts/provision-bounded-shopping.js read --revoke` and the equivalent `add --revoke`; remove their local private copies. Then use `/home/deploy/anylist-release-3dd4147d/deploy_anylist.py rollback --candidate 3dd4147d2b1bdf729f629b05224878c50c471aff`. This driver preserves the existing canary profiles and refuses restore while either new bounded identity remains. Baseline209b39c/image0e56f3da retained. Do not use older drivers or revoke unrelated identities. Experiments need only flag removal, already the default. See latest DEPLOYMENT.md for verified encrypted backups and checkpoints; keys remain box-side. No proxy rollback needed.
 
 The Gina coordination artifact records separate provider and harness evidence. Original exact add/read/remove/read canary was independently executed and accepted by Gina under its own explicit action approvals; this provider task did not perform it. Both later household reader/add-only credentials are delivered. Provider readiness never substitutes for Gina's independent qualification or exact-action authorization; no household add was performed during the new setup.
