@@ -7,7 +7,7 @@ import {VERSION,CLIENT_VERSION,CLIENT_COMMIT} from '../stable/capabilities.js';
 const exactName=z.string().min(1).max(128).regex(/^[^\u0000-\u001f\u007f]+$/u).refine(v=>v===v.trim()&&v.length>0&&!/\p{C}/u.test(v),'Use an exact trimmed name without Unicode control/format characters.');
 export const collisionKey=name=>String(name).normalize('NFKC').trim().replace(/\s+/gu,' ').toLowerCase();
 export function boundedSchema(profile,listId){
- const common={list_id:z.literal(listId),response_format:z.literal('structured').optional()};
+ const common={contract_version:z.literal(CONTRACT_VERSION),list_id:z.literal(listId),response_format:z.literal('structured').optional()};
  return profile===BOUNDED_READ
   ?z.object({...common,action:z.literal('list_items'),include_checked:z.literal(true).optional(),include_notes:z.literal(true).optional()}).strict()
   :z.object({...common,action:z.literal('add_item'),name:exactName,quantity:z.literal(1)}).strict();
@@ -18,6 +18,8 @@ function snapshot(list,provider,freshReadAt){
  if(!Array.isArray(list.items)||list.items.length>MAX_ITEMS)throw new CapabilityError('RESPONSE_TOO_LARGE','Complete list exceeds the supported item bound; no partial snapshot is returned.');
  const items=[],ids=new Set();let bytes=0;
  for(const raw of list.items){
+  // Do not let the shared view coerce malformed upstream state into active/history.
+  if(typeof raw?.checked!=='boolean')throw new CapabilityError('INVALID_SNAPSHOT','Provider item checked state must be a boolean.');
   const item=itemView(raw);
   if(typeof item.identifier!=='string'||!item.identifier||ids.has(item.identifier)||typeof item.name!=='string')throw new CapabilityError('INVALID_SNAPSHOT','Provider item identity is absent, duplicate or malformed.');
   ids.add(item.identifier);bytes+=Buffer.byteLength(JSON.stringify(item),'utf8')+1;
@@ -32,7 +34,7 @@ function snapshot(list,provider,freshReadAt){
 export function registerBoundedShopping(server,getClient,{profile,actorSource}){
  const binding=assertBoundedScope(profile,actorSource),schema=boundedSchema(profile,binding.listId),provider=metadata(profile,binding),isRead=profile===BOUNDED_READ;
  const current=()=>assertBoundedScope(profile,actorSource,binding.bindingSha256);
- server.registerTool('shopping',{description:isRead?'Fresh complete fixed-list snapshot including every checked/unchecked item and its notes. Canonical IDs/order preserved. No pagination or truncation; over10000 items/8MiB fails closed. structuredContent is authoritative; text is a summary. No server revision/CAS guarantee.':'Add one NEW item to the fixed list: exact trimmed name<=128 and quantity1 only. No notes/category/store/sort/bulk/check/delete/update. Refuse observed normalized-name collisions, including checked items. ACKNOWLEDGED requires independent readback; UNKNOWN must never be blindly retried. No external CAS/exactly-once guarantee.',inputSchema:schema.shape,annotations:{readOnlyHint:isRead,destructiveHint:false,idempotentHint:isRead,openWorldHint:false}},async input=>{
+ server.registerTool('shopping',{description:isRead?'Fresh complete fixed-list snapshot including every checked/unchecked item and its notes. Canonical IDs/order preserved. No pagination or truncation; over10000 items/8MiB fails closed. structuredContent is authoritative; text is a summary. No server revision/CAS guarantee.':'Add one NEW item to the fixed list: exact trimmed name<=128 and quantity1 only. No notes/category/store/sort/bulk/check/delete/update. Refuse normalized-name collisions with active (unchecked) items only. Checked history remains untouched; create a distinct new unchecked object. Requires bounded-shopping.v2. ACKNOWLEDGED requires independent readback; UNKNOWN must never be blindly retried. No external CAS/exactly-once guarantee.',inputSchema:schema.shape,annotations:{readOnlyHint:isRead,destructiveHint:false,idempotentHint:isRead,openWorldHint:false}},async input=>{
   let dispatched=false,attemptedItemId;
   try{
    const p=schema.parse(input);current();const c=await getClient();
@@ -42,11 +44,13 @@ export function registerBoundedShopping(server,getClient,{profile,actorSource}){
      const list=resolve(c.client.lists,{id:binding.listId},'list');
      const read=snapshot(list,provider,freshReadAt);
      if(isRead)return read;
-     if(list.items.some(i=>collisionKey(i.name)===collisionKey(p.name)))throw new CapabilityError('CONFLICT','An equivalent item name already exists; no upsert is permitted.');
+     if(read.structuredContent.items.some(i=>i.checked===false&&collisionKey(i.name)===collisionKey(p.name)))throw new CapabilityError('CONFLICT','An equivalent active item name already exists; no upsert is permitted.');
      const item=c.client.createItem({name:p.name,quantity:1,details:'',checked:false});
      // Refuse a write whose projected complete read cannot fit the reader bounds.
      snapshot({...list,items:[...list.items,item]},provider,freshReadAt);current();
      attemptedItemId=item.identifier;dispatched=true;await list.addItem(item);
+     // A transport ACK is not independent readback, but must retain exact local identity.
+     if(item.identifier!==attemptedItemId||item.name!==p.name||item.checked!==false)throw new CapabilityError('INVALID_ACKNOWLEDGEMENT','Provider acknowledgement changed the attempted item identity or state.');
      return result({ok:true,action:'add_item',listId:binding.listId,item:itemView(item),provider,dispatchAttempted:true,outcome:'ACKNOWLEDGED',independentReadRequired:true});
     }catch(e){return failed(e);}
    });

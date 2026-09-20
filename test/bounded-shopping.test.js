@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,writeFileSync,rmSync,chmodSync,symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import {registerAllTools} from '../src/tools/index.js';
-import {BOUNDED_READ,BOUNDED_ADD,MAX_ITEMS,MAX_RESULT_BYTES,loadBoundedBinding,boundedSource} from '../src/profiles/bounded-policy.js';
+import {BOUNDED_READ,BOUNDED_ADD,CONTRACT_VERSION,MAX_ITEMS,MAX_RESULT_BYTES,loadBoundedBinding,boundedSource} from '../src/profiles/bounded-policy.js';
 import {validateClientRedirectUri} from '../src/http/auth/policy.js';
 const target='a'.repeat(32),other='b'.repeat(32),newId='c'.repeat(32);
 function fixture(t,{items=[],profile=BOUNDED_READ,fail=false}={}){
@@ -18,8 +19,8 @@ function fixture(t,{items=[],profile=BOUNDED_READ,fail=false}={}){
  const tools={};const register=(actorSource=source)=>registerAllTools({registerTool(n,config,h){tools[n]={config,h};}},()=>{acquired++;return c;},{profile,actorSource});register();
  return {dir,file,binding,source,setPolicy,register,tools,list,c,counts:()=>({acquired,reads,writes,created}),call:async p=>(await tools.shopping.h(p)).structuredContent,raw:async p=>tools.shopping.h(p)};
 }
-const read={action:'list_items',list_id:target,include_checked:true,include_notes:true};
-const add={action:'add_item',list_id:target,name:'Synthetic new item',quantity:1};
+const read={contract_version:CONTRACT_VERSION,action:'list_items',list_id:target,include_checked:true,include_notes:true};
+const add={contract_version:CONTRACT_VERSION,action:'add_item',list_id:target,name:'Synthetic new item',quantity:1};
 test('complete 2509-item snapshot includes all checked/unchecked items, exact notes, IDs and order',async t=>{
  const items=Array.from({length:2509},(_,i)=>({identifier:i.toString(16).padStart(32,'0'),name:`Fixture ${i}`,quantity:String(i+1),checked:i%2===0,details:`\"Unicode 🍎 note ${i}\"\n`+'x'.repeat(300),storeIds:['fixture-store'],categoryAssignments:[]}));
  const f=fixture(t,{items}),r=await f.raw(read),body=r.structuredContent;
@@ -33,12 +34,12 @@ test('read schema rejects filtering/paging/other target/mutations before client 
  assert.equal(f.counts().acquired,0);
 });
 test('oversized byte/count snapshots fail with no partial items or complete claim',async t=>{
- const f=fixture(t,{items:[{identifier:'1',name:'Synthetic',details:'🍎'.repeat(MAX_RESULT_BYTES/4)}]});
+ const f=fixture(t,{items:[{identifier:'1',name:'Synthetic',checked:false,details:'🍎'.repeat(MAX_RESULT_BYTES/4)}]});
  let r=await f.call(read);assert.equal(r.error.code,'RESPONSE_TOO_LARGE');assert.equal(r.complete,false);assert.equal(r.items,undefined);
- f.list.items=Array.from({length:MAX_ITEMS+1},(_,i)=>({identifier:String(i),name:'Fixture'}));r=await f.call(read);assert.equal(r.error.code,'RESPONSE_TOO_LARGE');assert.equal(r.items,undefined);
+ f.list.items=Array.from({length:MAX_ITEMS+1},(_,i)=>({identifier:String(i),name:'Fixture',checked:false}));r=await f.call(read);assert.equal(r.error.code,'RESPONSE_TOO_LARGE');assert.equal(r.items,undefined);
 });
 test('duplicate/missing IDs fail complete snapshot rather than inventing identity',async t=>{
- const f=fixture(t,{items:[{identifier:'same',name:'One'},{identifier:'same',name:'Two'}]});assert.equal((await f.call(read)).error.code,'INVALID_SNAPSHOT');f.list.items=[{name:'Missing'}];assert.equal((await f.call(read)).error.code,'INVALID_SNAPSHOT');
+ const f=fixture(t,{items:[{identifier:'same',name:'One',checked:false},{identifier:'same',name:'Two',checked:true}]});assert.equal((await f.call(read)).error.code,'INVALID_SNAPSHOT');f.list.items=[{name:'Missing',checked:false}];assert.equal((await f.call(read)).error.code,'INVALID_SNAPSHOT');
 });
 test('add-only schema forbids model notes and all broader actions/fields before acquisition',async t=>{
  const f=fixture(t,{profile:BOUNDED_ADD});assert.deepEqual(Object.keys(f.tools),['shopping']);assert.equal(f.tools.shopping.config.inputSchema.action.value,'add_item');
@@ -50,11 +51,11 @@ test('add-only schema forbids model notes and all broader actions/fields before 
 test('new-item add encodes no notes, calls once, and normalized collision never upserts',async t=>{
  const f=fixture(t,{profile:BOUNDED_ADD});const first=await f.call(add);assert.equal(first.ok,true);assert.equal(first.item.identifier,newId);assert.equal(first.item.note,null);assert.equal(first.item.quantity,1);assert.equal(first.outcome,'ACKNOWLEDGED');assert.equal(first.independentReadRequired,true);assert.equal(f.counts().writes,1);
  assert.equal((await f.call({...add,name:'SYNTHETIC  NEW ITEM'})).error.code,'CONFLICT');assert.equal(f.counts().writes,1);
- f.list.items=[{identifier:'1',name:' ＳＹＮＴＨＥＴＩＣ new item ',checked:true,details:'Keep'}];assert.equal((await f.call(add)).error.code,'CONFLICT');assert.equal(f.list.items[0].details,'Keep');
+
 });
 test('add refuses any snapshot that cannot be completely read and preserves unknown outcome without retry',async t=>{
  const f=fixture(t,{profile:BOUNDED_ADD,fail:true});let r=await f.call(add);assert.equal(r.outcome,'UNKNOWN');assert.equal(r.attemptedItemId,newId);assert.equal(r.independentReadRequired,true);assert.equal(f.counts().writes,1);assert.ok(!JSON.stringify(r).includes('private upstream'));
- f.list.items=Array.from({length:MAX_ITEMS},(_,i)=>({identifier:String(i),name:`Existing ${i}`}));r=await f.call(add);assert.equal(r.error.code,'RESPONSE_TOO_LARGE');assert.equal(r.outcome,'NOT_DISPATCHED');assert.equal(f.counts().writes,1);
+ f.list.items=Array.from({length:MAX_ITEMS},(_,i)=>({identifier:String(i),name:`Existing ${i}`,checked:false}));r=await f.call(add);assert.equal(r.error.code,'RESPONSE_TOO_LARGE');assert.equal(r.outcome,'NOT_DISPATCHED');assert.equal(f.counts().writes,1);
 });
 test('policy kill/retarget is checked for existing session and immediately before dispatch',async t=>{
  const f=fixture(t,{profile:BOUNDED_ADD});f.setPolicy({addEnabled:false});assert.equal((await f.call(add)).error.code,'POLICY_DISABLED');assert.equal(f.counts().acquired,0);
@@ -69,12 +70,12 @@ test('both bounded clients deny browser rebinding',()=>{
  for(const profile of [BOUNDED_READ,BOUNDED_ADD])assert.throws(()=>validateClientRedirectUri({profile,redirect_uri:null},'https://claude.ai/api/mcp/auth_callback'),e=>e.status===403);
 });
 
-test('actual pinned protobuf add contains only new name, quantity1 and empty notes',async t=>{
+test('actual pinned protobuf add preserves checked history and creates a distinct new item',async t=>{
  const f=fixture(t,{profile:BOUNDED_ADD});const {default:AnyList}=await import('../src/anylist-legacy-client.cjs');const {default:List}=await import('../anylist-js/lib/list.js');
  const lib=new AnyList({email:'fixture@example.invalid',password:'unused'});lib.uid='fixture-owner';const operations=[];
  lib.client={post:async(endpoint,{body})=>{assert.equal(endpoint,'data/shopping-lists/update');const ops=lib.protobuf.PBListOperationList.decode(body._streams.find(Buffer.isBuffer));assert.equal(ops.operations.length,1);operations.push(ops.operations[0]);}};
- const list=new List({identifier:target,name:'Synthetic',items:[]},lib);lib.lists=[list];lib.getLists=async()=>lib.lists;f.c.client=lib;
- const r=await f.call(add);assert.equal(r.ok,true);assert.equal(operations.length,1);const op=operations[0];assert.equal(op.metadata.handlerId,'add-shopping-list-item');assert.equal(op.listId,target);assert.equal(op.listItem.name,add.name);assert.equal(op.listItem.quantityPb.amount,'1');assert.equal(op.listItem.details,'');assert.equal(op.listItem.checked,false);
+ const list=new List({identifier:target,name:'Synthetic',items:[{identifier:'d'.repeat(32),name:add.name,quantity:'3',checked:true,details:'Historical note'}]},lib);const history=list.items[0];const before=JSON.stringify(history._encode());lib.lists=[list];lib.getLists=async()=>lib.lists;f.c.client=lib;
+ const r=await f.call(add);assert.equal(r.ok,true);assert.equal(operations.length,1);const op=operations[0];assert.equal(op.metadata.handlerId,'add-shopping-list-item');assert.equal(op.listId,target);assert.equal(op.listItem.name,add.name);assert.equal(op.listItem.quantityPb.amount,'1');assert.equal(op.listItem.details,'');assert.equal(op.listItem.checked,false);assert.equal(op.listItemId,r.item.identifier);assert.equal(op.listItem.identifier,r.item.identifier);assert.notEqual(r.item.identifier,history.identifier);assert.equal(list.items.length,2);assert.equal(list.items[0],history);assert.equal(JSON.stringify(history._encode()),before);assert.equal(list.items[1].identifier,r.item.identifier);
 });
 
 test('actual MCP HTTP transport returns one complete 2509-item structured result without text duplication',async t=>{
@@ -88,4 +89,40 @@ test('actual MCP HTTP transport returns one complete 2509-item structured result
  const rpc=async(id,method,params)=>{const r=await fetch(url,{method:'POST',headers:{Accept:'application/json, text/event-stream','Content-Type':'application/json',...(session?{'Mcp-Session-Id':session}:{})},body:JSON.stringify({jsonrpc:'2.0',id,method,params})});assert.equal(r.status,200);session=r.headers.get('mcp-session-id')||session;const text=await r.text();return {body:JSON.parse(text),bytes:Buffer.byteLength(text)};};
  await rpc(1,'initialize',{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'fixture',version:'1'}});
  const r=await rpc(2,'tools/call',{name:'shopping',arguments:read});assert.equal(r.body.result.structuredContent.items.length,2509);assert.equal(r.body.result.structuredContent.complete,true);assert.ok(r.bytes>1500000);assert.ok(r.bytes<MAX_RESULT_BYTES+1024);t.diagnostic(`Synthetic2509 complete MCP response bytes=${r.bytes}; no real provider calls.`);
+});
+
+
+test('checked-only normalized history permits one distinct active item and preserves every old record',async t=>{
+ const history=[{identifier:'old1',name:' ＳＹＮＴＨＥＴＩＣ new item ',checked:true,quantity:'4',details:'Keep note'},{identifier:'old2',name:'SYNTHETIC  NEW ITEM',checked:true,storeIds:['old-store']},{identifier:'unrelated',name:'Other active item',checked:false,details:'Untouched'}];
+ const before=structuredClone(history),f=fixture(t,{profile:BOUNDED_ADD,items:history});
+ const r=await f.call(add);assert.equal(r.outcome,'ACKNOWLEDGED');assert.equal(r.listId,target);assert.equal(r.item.identifier,newId);assert.equal(r.item.checked,false);assert.equal(r.item.name,add.name);
+ assert.deepEqual(f.list.items.slice(0,history.length),before);assert.equal(f.list.items.length,history.length+1);assert.deepEqual(f.counts(),{acquired:1,reads:1,writes:1,created:1});
+});
+test('active-only and mixed checked/unchecked collisions are NOT_DISPATCHED',async t=>{
+ const f=fixture(t,{profile:BOUNDED_ADD});
+ for(const checkedStates of [[false],[true,false],[false,true]]){
+  f.list.items=checkedStates.map((checked,i)=>({identifier:'old'+i,name:' ＳＹＮＴＨＥＴＩＣ  NEW ITEM ',checked,details:'Preserve'}));const before=structuredClone(f.list.items);
+  const r=await f.call(add);assert.equal(r.error.code,'CONFLICT');assert.equal(r.outcome,'NOT_DISPATCHED');assert.equal(r.dispatchAttempted,false);assert.deepEqual(f.list.items,before);
+ }
+ assert.equal(f.counts().writes,0);assert.equal(f.counts().created,0);
+});
+test('malformed checked state fails closed before coercion for reads and adds',async t=>{
+ const f=fixture(t,{profile:BOUNDED_ADD});
+ for(const checked of [undefined,null,0,1,'false','true',{},[]]){
+  f.list.items=[{identifier:'old',name:'Unrelated',checked}];const r=await f.call(add);assert.equal(r.error.code,'INVALID_SNAPSHOT');assert.equal(r.outcome,'NOT_DISPATCHED');assert.equal(r.items,undefined);
+ }
+ assert.equal(f.counts().created,0);assert.equal(f.counts().writes,0);
+ const reader={};registerAllTools({registerTool(n,config,h){reader[n]=h;}},()=>f.c,{profile:BOUNDED_READ,actorSource:boundedSource(BOUNDED_READ,f.binding)});
+ assert.equal((await reader.shopping(read)).structuredContent.error.code,'INVALID_SNAPSHOT');
+});
+test('v1 binding and missing/old contract-version calls cannot use v2 semantics',async t=>{
+ const f=fixture(t,{profile:BOUNDED_ADD});
+ const oldDigest=createHash('sha256').update(JSON.stringify({contract:'bounded-shopping.v1',listId:target,maxItems:MAX_ITEMS,maxResultBytes:MAX_RESULT_BYTES})).digest('hex');
+ assert.notEqual(oldDigest,f.binding.bindingSha256);assert.throws(()=>f.register('gina/bounded-shopping-add:'+oldDigest),e=>e.code==='POLICY_CHANGED');
+ for(const contract_version of [undefined,'bounded-shopping.v1'])assert.equal((await f.call({...add,contract_version})).error.code,'INVALID_INPUT');
+ assert.equal(f.counts().acquired,0);assert.equal(f.tools.shopping.config.inputSchema.contract_version.value,'bounded-shopping.v2');
+});
+test('duplicate attempted ID refuses before dispatch; changed ACK ID remains UNKNOWN without retry',async t=>{
+ const f=fixture(t,{profile:BOUNDED_ADD,items:[{identifier:newId,name:'Historical',checked:true}]});let r=await f.call(add);assert.equal(r.error.code,'INVALID_SNAPSHOT');assert.equal(r.outcome,'NOT_DISPATCHED');assert.equal(f.counts().writes,0);
+ f.list.items=[];f.list.addItem=async item=>{item.identifier='unexpected';};r=await f.call(add);assert.equal(r.error.code,'INVALID_ACKNOWLEDGEMENT');assert.equal(r.outcome,'UNKNOWN');assert.equal(r.attemptedItemId,newId);assert.equal(r.item,undefined);assert.equal(r.independentReadRequired,true);
 });
