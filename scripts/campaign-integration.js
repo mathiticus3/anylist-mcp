@@ -60,6 +60,7 @@ try {
  const first=(await shop('add_item',{name:prefix+'Milk',quantity:2,notes:'disposable test'})).item;
  await shop('add_items',{items:[{name:prefix+'Bananas'},{name:prefix+'Bread'}]});
  await shop('update_item',{id:first.identifier,quantity:3,notes:'updated test note'});
+ const freshItem=(await shop('list_items',{include_checked:true,include_notes:true})).items.find(i=>i.identifier===first.identifier);assert.equal(String(freshItem.quantity),'3');assert.equal(freshItem.note,'updated test note');
  await shop('check_item',{id:first.identifier});
  await assertFresh(async()=>assert.equal((await shop('list_items',{include_checked:true})).items.find(i=>i.identifier===first.identifier).checked,true));
  await shop('uncheck_item',{id:first.identifier});
@@ -67,13 +68,13 @@ try {
  await shop('set_item_store',{id:first.identifier,store_name:''});
  const fav=(await shop('add_favorite',{name:prefix+'Favorite',notes:'test'})).item;
  await shop('update_favorite',{id:fav.identifier,notes:'updated'});
- await assertFresh(async()=>assert.ok((await shop('get_favorites')).items.some(i=>i.identifier===fav.identifier)));
+ await assertFresh(async()=>assert.equal((await shop('get_favorites')).items.find(i=>i.identifier===fav.identifier)?.note,'updated'));
  await shop('remove_favorite',{id:fav.identifier});
  const groups=(await shop('list_categories')).categorySets;
  if(groups.length){const name=prefix+'Category';await shop('create_category',{name,category_set:groups[0].name});await shop('rename_category',{name,new_name:name+'2',category_set:groups[0].name});await shop('delete_category',{name:name+'2',category_set:groups[0].name});}
  const r=(await call('recipes','create',{name:prefix+'Recipe',note:'preserve',ingredients:[{name:'Water',quantity:'1 cup'}],steps:['Boil'],servings:'2',rating:4})).recipe;
  await call('recipes','update',{id:r.identifier,new_name:prefix+'Recipe updated',prep_time:5});
- assert.equal((await call('recipes','get',{id:r.identifier})).recipe.note,'preserve');
+ const freshRecipe=(await call('recipes','get',{id:r.identifier})).recipe;assert.equal(freshRecipe.note,'preserve');assert.equal(freshRecipe.prepTime,5);assert.equal(freshRecipe.rating,4);
  await call('recipes','list',{search:prefix});
  const fixtureUrl='https://raw.githubusercontent.com/mathiticus3/anylist-mcp/codex/anylist-stable-parity/test/fixtures/campaign-recipe.html';
  await call('recipes','normalize',{url:fixtureUrl});
