@@ -68,9 +68,10 @@ test('meal CRUD, date and range filtering, names, partial update',async()=>{
   const {c}=fixture();const call=(a,p={})=>executeClientCapability(c,'meal_plan',a,p);
   const e=(await call('create_event',{date:'2026-09-22',title:'Tacos',details:'keep',label_name:'Dinner'})).event;
   assert.equal(e.labelId,'dinner');
-  assert.equal((await call('update_event',{event_id:e.identifier,date:'2026-09-23'})).event.details,'keep');
-  assert.equal((await call('list_events',{date:'2026-09-22'})).events.length,0);
-  assert.equal((await call('list_events',{start_date:'2026-09-23',end_date:'2026-09-23'})).events.length,1);
+  assert.equal((await call('update_event',{event_id:e.identifier,details:'updated'})).event.details,'updated');
+  await assert.rejects(call('update_event',{event_id:e.identifier,date:'2026-09-23'}));
+  assert.equal((await call('list_events',{date:'2026-09-22'})).events.length,1);
+  assert.equal((await call('list_events',{start_date:'2026-09-22',end_date:'2026-09-23'})).events.length,1);
   await assert.rejects(call('list_events',{start_date:'2026-09-24',end_date:'2026-09-23'}));
   await call('delete_event',{event_id:e.identifier});assert.equal((await call('list_events')).events.length,0);
 });
@@ -99,4 +100,11 @@ test('recipe URL boundary rejects private IP, redirects destinations and credent
 test('normalization and version manifest require no secrets',async()=>{
   const {c}=fixture();const res=await executeClientCapability(c,'recipes','normalize',{text:'Test Soup\nIngredients\n1 cup water\nInstructions\nBoil water.'});assert.ok(res.recipe.name);assert.equal(res.saved,false);
   const manifest=await executeClientCapability(c,'service','capabilities',{});assert.ok(manifest.clientCommit);assert.equal(manifest.capabilities.length,CAPABILITIES.length);
+});
+test('existing category removal carries its typed original category and group',async()=>{
+  const {createRequire}=await import('node:module');const require=createRequire(import.meta.url);const List=require('../anylist-js/lib/list');
+  const {raw}=fixture();let operation;
+  const list=new List({identifier:'list1',name:'Test',items:[]},{client:{post:async(path,{body})=>{assert.equal(path,'data/shopping-lists/update-v2');operation=raw.protobuf.PBListOperationList.decode(body._streams.find(Buffer.isBuffer)).operations[0];}},protobuf:raw.protobuf,uid:'user',stores:[]});
+  list.categoryGroups=[{identifier:'group',categories:[{identifier:'category',name:'Disposable'}]}];
+  await list.removeCategory('category');assert.equal(operation.metadata.handlerId,'remove-category');assert.equal(operation.originalCategory.identifier,'category');assert.equal(operation.originalCategory.categoryGroupId,'group');
 });

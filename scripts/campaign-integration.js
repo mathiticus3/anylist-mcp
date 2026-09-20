@@ -39,6 +39,10 @@ async function cleanup() {
    const result=await call(tool,read,tool==='recipes'?{search:prefix}:tool==='meal_plan'?{date:'2099-01-01'}:{});
    for(const obj of result[key].filter(r=>(r.name||r.title||'').startsWith(prefix)))await call(tool,del,tool==='meal_plan'?{event_id:obj.identifier}:{id:obj.identifier});
  }catch(e){errors.push(tool+':'+e.message);}
+ if(listId)try{
+   const items=await shop('list_items',{include_checked:true});const favorites=await shop('get_favorites');const categories=await shop('list_categories');
+   if([...items.items,...favorites.items,...categories.categorySets.flatMap(g=>g.categories)].some(i=>i.name.startsWith(prefix)))errors.push('shopping residue after delete');
+ }catch(e){errors.push('cleanup verification failed');}
  return errors;
 }
 let failed;
@@ -82,10 +86,10 @@ try {
  assert.ok(!(await call('recipe_collections','get',{id:col.identifier})).collection.recipeIds.includes(r.identifier));
  await call('meal_plan','list_labels');
  const meal=(await call('meal_plan','create_event',{date:'2099-01-01',title:prefix+'Meal',details:'preserve',recipe_id:r.identifier})).event;
- await call('meal_plan','update_event',{event_id:meal.identifier,title:prefix+'Meal updated'});
+ await call('meal_plan','update_event',{event_id:meal.identifier,details:'updated details'});
  const events=(await call('meal_plan','list_events',{date:'2099-01-01'})).events;
- assert.equal(events.find(e=>e.identifier===meal.identifier).title,prefix+'Meal updated');
- assert.equal(events.find(e=>e.identifier===meal.identifier).details,'preserve');
+ assert.equal(events.find(e=>e.identifier===meal.identifier).title,prefix+'Meal');
+ assert.equal(events.find(e=>e.identifier===meal.identifier).details,'updated details');
  await call('meal_plan','delete_event',{event_id:meal.identifier});
  await call('recipe_collections','delete',{id:col.identifier});await call('recipes','delete',{id:r.identifier});await shop('delete_item',{id:first.identifier});
  for(const [tool,action] of [['recipes','list'],['recipe_collections','list'],['meal_plan','list_events'],['meal_plan','list_labels']])await call(tool,action,tool==='meal_plan'&&action==='list_events'?{date:'2099-01-01'}:{},true);

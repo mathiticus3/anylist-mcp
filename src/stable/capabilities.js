@@ -54,7 +54,7 @@ for (const [action,operationId,verb] of [['add_recipe','addRecipeToCollection','
 add('meal_plan','list_events','getMealPlan','Read meal events using an exact date or inclusive date range.',{date:opt(date),start_date:opt(date),end_date:opt(date)});
 add('meal_plan','list_labels','listMealLabels','Read meal labels and IDs.');
 add('meal_plan','create_event','addMealPlanEvent','Create one dated meal, optionally linked to a recipe and label.',{...meal,date},'write');
-add('meal_plan','update_event','updateMealPlanEvent','Update supplied fields of one meal event.',{...meal,event_id:id},'write');
+add('meal_plan','update_event','updateMealPlanEvent','Update the details of one meal event. The pinned library does not persist date, title, label or recipe changes.',{details:text,event_id:id},'write');
 add('meal_plan','delete_event','deleteMealPlanEvent','Delete one explicitly identified meal event.',{event_id:id},'delete');
 add('service','status','getServiceStatus','Authenticate and report ready state, versions and last synchronization.');
 add('service','capabilities','getCapabilities','Read the stable capability manifest.');

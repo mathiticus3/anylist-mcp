@@ -6,4 +6,5 @@ const definitions = require("../anylist-js/lib/definitions.json");
 
 installProtobufV5Compatibility(protobuf, definitions);
 
+require("./anylist-library-fixes.cjs");
 module.exports = require("../anylist-js/lib/index.js");
