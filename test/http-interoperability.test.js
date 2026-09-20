@@ -322,3 +322,32 @@ test('separate writer registration is idempotent, tightly scoped, browser-bindin
  assert.deepEqual(db.prepare("SELECT * FROM oauth_clients WHERE profile='gina_canary_readonly'").get(),verifierBefore);
  assert.ok(!output.join('').includes(secret.GINA_CANARY_WRITE_CLIENT_ID));assert.ok(!output.join('').includes(secret.GINA_CANARY_WRITE_CLIENT_SECRET));assert.ok(!output.join('').includes(token.access_token));
 });
+
+test('separate fixed-policy read/add grants pin source digest and preserve canary identities on revoke', {timeout:30000}, async t=>{
+ const dataDir=await mkdtemp(path.join(os.tmpdir(),'anylist-bounded-auth-'));const port=await reservePort(),base=`http://127.0.0.1:${port}`,allowed=path.join(dataDir,'allowed.txt');await writeFile(allowed,'fixture@example.invalid\n');
+ const env={...process.env,DATA_DIR:dataDir,ALLOWED_EMAILS_FILE:allowed,PORT:String(port),BASE_URL:base,SERVER_SECRET_KEY:'0'.repeat(64),SESSION_SECRET:'fixture'};
+ const output=[],child=spawn(process.execPath,['src/http/index.js'],{cwd:path.resolve(import.meta.dirname,'..'),env,stdio:['ignore','pipe','pipe']});child.stdout.on('data',x=>output.push(x.toString()));child.stderr.on('data',x=>output.push(x.toString()));t.after(async()=>{await stopServer(child);await rm(dataDir,{recursive:true,force:true});});await waitForServer(base,child,output);
+ const db=new Database(path.join(dataDir,'anylist-mcp.db'));t.after(()=>db.close());db.prepare('INSERT INTO users(id,email)VALUES(?,?)').run('owner','fixture@example.invalid');db.prepare('INSERT INTO anylist_credentials(user_id,encrypted_user,encrypted_pass)VALUES(?,?,?)').run('owner','unused-test-only','unused-test-only');
+ const {execFile}=await import('node:child_process'),{promisify}=await import('node:util'),{readFile,stat}=await import('node:fs/promises');const exec=promisify(execFile);
+ const command=async(script,...args)=>exec(process.execPath,[script,...args],{cwd:path.resolve(import.meta.dirname,'..'),env});
+ await command('scripts/provision-canary-client.js','--provision');await command('scripts/provision-canary-writer.js','--provision');const canaries=db.prepare('SELECT * FROM oauth_clients ORDER BY client_name').all();
+ const policyPath=path.join(dataDir,'gina-bounded-shopping.json'),policy={schemaVersion:1,listId:'a'.repeat(32),readerEnabled:true,addEnabled:true};await writeFile(policyPath,JSON.stringify(policy),{mode:0o600});
+ const tokens={};
+ for(const role of ['read','add']){
+  const first=JSON.parse((await command('scripts/provision-bounded-shopping.js',role,'--provision')).stdout);assert.equal(first.created,true);assert.equal(JSON.parse((await command('scripts/provision-bounded-shopping.js',role,'--provision')).stdout).created,false);
+  const file=path.join(dataDir,`.env.gina-bounded-shopping-${role}`);assert.equal((await stat(file)).mode&0o077,0);const secret=Object.fromEntries((await readFile(file,'utf8')).trim().split('\n').map(l=>l.split('=')));
+  const auth=await fetch(base+'/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'client_credentials',client_id:secret.GINA_BOUNDED_CLIENT_ID,client_secret:secret.GINA_BOUNDED_CLIENT_SECRET})});assert.equal(auth.status,200);const token=await auth.json();tokens[role]=token.access_token;let session,id=1;
+  async function rpc(method,params){const r=await fetch(base+'/mcp',{method:'POST',headers:{Authorization:'Bearer '+token.access_token,Accept:'application/json, text/event-stream','Content-Type':'application/json',...(session?{'Mcp-Session-Id':session}:{})},body:JSON.stringify({jsonrpc:'2.0',id:id++,method,params})});assert.equal(r.status,200);session=r.headers.get('mcp-session-id')||session;const text=await r.text();return r.headers.get('content-type').includes('text/event-stream')?JSON.parse(text.split('\n').filter(l=>l.startsWith('data:')).at(-1).slice(5)):JSON.parse(text);}
+  await rpc('initialize',{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'fixture',version:'1'}});const inventory=(await rpc('tools/list',{})).result.tools;assert.deepEqual(inventory.map(x=>x.name),['shopping']);assert.equal(inventory[0].inputSchema.properties.list_id.const,policy.listId);assert.equal(inventory[0].inputSchema.properties.action.const,role==='read'?'list_items':'add_item');assert.equal(inventory[0].inputSchema.additionalProperties,false);if(role==='add')assert.deepEqual(Object.keys(inventory[0].inputSchema.properties).sort(),['action','list_id','name','quantity','response_format']);
+  const bad=await rpc('tools/call',{name:'shopping',arguments:{action:'delete_item',list_id:policy.listId,item_id:'1'}});assert.ok(bad.error||bad.result?.isError);
+  assert.equal((await fetch(base+'/authorize?'+new URLSearchParams({client_id:secret.GINA_BOUNDED_CLIENT_ID,redirect_uri:'https://claude.ai/api/mcp/auth_callback'}),{redirect:'manual'})).status,403);
+  assert.ok(!output.join('').includes(secret.GINA_BOUNDED_CLIENT_ID));assert.ok(!output.join('').includes(secret.GINA_BOUNDED_CLIENT_SECRET));
+ }
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM oauth_clients').get().n,4);
+ await writeFile(policyPath,JSON.stringify({...policy,addEnabled:false}));assert.equal((await fetch(base+'/mcp',{headers:{Authorization:'Bearer '+tokens.add}})).status,401);
+ await writeFile(policyPath,JSON.stringify({...policy,listId:'b'.repeat(32)}));for(const token of Object.values(tokens))assert.equal((await fetch(base+'/mcp',{headers:{Authorization:'Bearer '+token}})).status,401);
+ await assert.rejects(()=>command('scripts/provision-bounded-shopping.js','add','--provision'));
+ await rm(policyPath);for(const role of ['add','read'])await command('scripts/provision-bounded-shopping.js',role,'--revoke');
+ assert.deepEqual(db.prepare('SELECT * FROM oauth_clients ORDER BY client_name').all(),canaries);
+ for(const token of Object.values(tokens))assert.equal((await fetch(base+'/mcp',{headers:{Authorization:'Bearer '+token}})).status,401);
+});

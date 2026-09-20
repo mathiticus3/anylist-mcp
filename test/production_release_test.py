@@ -42,9 +42,22 @@ class ProductionReleaseTests(unittest.TestCase):
             with self.assertRaises(deploy_anylist.ReleaseError):
                 deploy_anylist.assert_legacy_rollback_profiles(prod, "readonly-image")
 
+    def test_bounded_rollback_preserves_canary_identities_on_exact_reviewed_baseline(self):
+        prod = {"volume_name": "test-volume"}
+        with patch.object(deploy_anylist, "run", side_effect=["b59db0a6d5fb400b1eba9a7ed4e0c2206743b15e", '{"restrictedClients":0}']) as run:
+            deploy_anylist.assert_legacy_rollback_profiles(prod, "canary-image")
+            code = run.call_args.args[0][-1]
+            self.assertIn('"gina_canary_readonly"', code)
+            self.assertIn('"gina_canary_write"', code)
+            self.assertNotIn('"gina_bounded_read"', code)
+            self.assertNotIn('"gina_bounded_add"', code)
+        with patch.object(deploy_anylist, "run", side_effect=["b59db0a6d5fb400b1eba9a7ed4e0c2206743b15e", '{"restrictedClients":1}']):
+            with self.assertRaises(deploy_anylist.ReleaseError):
+                deploy_anylist.assert_legacy_rollback_profiles(prod, "canary-image")
+
     def test_release_spec_is_exactly_scoped_to_live_anylist(self):
         release = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(release["expected_baseline"]["commit"], "f085f2d29317fdc658be0b9a98a0dfead176d44d")
+        self.assertEqual(release["expected_baseline"]["commit"], "b59db0a6d5fb400b1eba9a7ed4e0c2206743b15e")
         self.assertIsNone(release["expected_baseline"]["branch"])
         self.assertEqual(release["production"]["source_directory"], "/home/deploy/web-caddy/anylist-upstream")
         self.assertEqual(release["production"]["volume_name"], "web-caddy_anylist-mcp-data")

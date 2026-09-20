@@ -789,6 +789,8 @@ def assert_legacy_rollback_profiles(prod: dict, rollback_image: str) -> None:
     allowed = ["full", "gina"]
     if target_commit == "f085f2d29317fdc658be0b9a98a0dfead176d44d":
         allowed.append("gina_canary_readonly")
+    elif target_commit == "b59db0a6d5fb400b1eba9a7ed4e0c2206743b15e":
+        allowed.extend(["gina_canary_readonly", "gina_canary_write"])
     code = """const Database=require('better-sqlite3');
 const db=new Database('/data/anylist-mcp.db',{readonly:true});
 const allowed=ALLOWED_PROFILES;
