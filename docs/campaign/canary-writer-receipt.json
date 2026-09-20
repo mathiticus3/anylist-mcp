@@ -7,7 +7,7 @@
   "nodeTests": 147,
   "releaseTests": 20,
   "writerStatus": {
-    "clientIdSha256": null,
+    "clientIdSha256": "16f920f50e971020f4f554b7124fa29e713f378a11ce68203a7d78d8bbc1ae3c",
     "clientName": "gina-canary-harness-write",
     "profile": "gina_canary_write",
     "source": "gina/action-harness-write",
@@ -17,8 +17,8 @@
     "executionApprovalIncluded": false,
     "credentialFile": "/data/.env.gina-canary-harness-write",
     "secretPrinted": false,
-    "registered": false,
-    "privateCredentialPresent": false
+    "registered": true,
+    "created": false
   },
   "readonlyRegression": {
     "ok": true,
@@ -79,8 +79,8 @@
     "credentialFile": "/data/.env.gina-canary-harness",
     "secretPrinted": false
   },
-  "writerProvisioning": "BLOCKED_PENDING_DIRECT_OWNER_APPROVAL",
-  "localWriterCredentialDelivered": false,
+  "writerProvisioning": "COMPLETE_AFTER_DIRECT_OWNER_APPROVAL",
+  "localWriterCredentialDelivered": true,
   "providerWrites": 0,
   "permissionMutationProbes": 0,
   "punchlistReadItems": 93,
@@ -90,6 +90,119 @@
     "sha256": "c0315ec3756bb1739370205598da03ddeaf7f9cbeb4084ebd8b7397101dac093",
     "decryptVerified": true
   },
-  "rollbackGuard": "reviewed-readonly-baseline-compatible",
-  "rollbackPerformed": false
+  "rollbackGuard": "blocked_before_restore_with_writer_registered",
+  "rollbackPerformed": false,
+  "provision": [
+    {
+      "clientIdSha256": "16f920f50e971020f4f554b7124fa29e713f378a11ce68203a7d78d8bbc1ae3c",
+      "clientName": "gina-canary-harness-write",
+      "profile": "gina_canary_write",
+      "source": "gina/action-harness-write",
+      "allowedListId": "297966c79aa64357a5f765bb2214470c",
+      "readOnly": false,
+      "boundedWriter": true,
+      "executionApprovalIncluded": false,
+      "credentialFile": "/data/.env.gina-canary-harness-write",
+      "secretPrinted": false,
+      "registered": true,
+      "created": true
+    },
+    {
+      "clientIdSha256": "16f920f50e971020f4f554b7124fa29e713f378a11ce68203a7d78d8bbc1ae3c",
+      "clientName": "gina-canary-harness-write",
+      "profile": "gina_canary_write",
+      "source": "gina/action-harness-write",
+      "allowedListId": "297966c79aa64357a5f765bb2214470c",
+      "readOnly": false,
+      "boundedWriter": true,
+      "executionApprovalIncluded": false,
+      "credentialFile": "/data/.env.gina-canary-harness-write",
+      "secretPrinted": false,
+      "registered": true,
+      "created": false
+    }
+  ],
+  "writerDiscovery": {
+    "ok": true,
+    "observedAt": "2026-09-20T22:05:50.193Z",
+    "clientIdSha256": "16f920f50e971020f4f554b7124fa29e713f378a11ce68203a7d78d8bbc1ae3c",
+    "clientName": "gina-canary-harness-write",
+    "profile": "gina_canary_write",
+    "source": "gina/action-harness-write",
+    "grant": "client_credentials",
+    "tokenEndpoint": "https://anylist.vector72.io/token",
+    "mcpEndpoint": "https://anylist.vector72.io/mcp",
+    "allowedListId": "297966c79aa64357a5f765bb2214470c",
+    "boundedWriter": true,
+    "executionApprovalIncluded": false,
+    "providerWrites": 0,
+    "permissionMutationProbes": 0,
+    "toolCalls": 0,
+    "shoppingSchema": {
+      "type": "object",
+      "properties": {
+        "list_id": {
+          "type": "string",
+          "const": "297966c79aa64357a5f765bb2214470c"
+        },
+        "response_format": {
+          "type": "string",
+          "const": "structured"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "add_item",
+            "delete_item"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Required exact new name for add_item; forbidden for delete_item."
+        },
+        "expected_name": {
+          "$ref": "#/properties/name",
+          "description": "Required exact name for delete_item; forbidden for add_item."
+        },
+        "quantity": {
+          "type": "number",
+          "const": 1,
+          "description": "Required for add_item; forbidden for delete_item."
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Optional for add_item; forbidden for delete_item."
+        },
+        "item_id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$",
+          "description": "Required exact ID for delete_item; forbidden for add_item."
+        }
+      },
+      "required": [
+        "list_id",
+        "action"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "credentialFile": "/data/.env.gina-canary-harness-write",
+    "secretPrinted": false
+  },
+  "privateDelivery": {
+    "file": "/Users/matthewmaupin/.config/vector72/credentials/gina-canary-harness-write.env",
+    "mode": "0600",
+    "directoryMode": "0700",
+    "identityDigestVerified": true,
+    "secretPrinted": false
+  },
+  "writerCredentialBackup": {
+    "path": "/home/deploy/web-caddy/backups/anylist-campaign-20260920/gina-canary-writer-credential.tar.enc",
+    "sha256": "d5ee0559f20ba80e38058241ea52849de79640eb98bfae9e1311757ae020e341",
+    "decryptVerified": true
+  },
+  "ginaIndependentWriterDiscovery": "PENDING"
 }
