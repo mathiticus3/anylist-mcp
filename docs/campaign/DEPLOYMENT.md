@@ -33,3 +33,13 @@ Explained gaps: shopping-list CRUD/store CRUD/collection rename/meal title-date-
 ## Phase 2 preparation — not yet accepted
 
 Phase1 PR5 merged into the deployed compatibility line after final test/docs CI run35530886683 passed. Adapter implementation is a same-process projection over registered MCP handlers with dedicated independently revocable bearer authentication, generated OpenAPI3.1 and 30 operations covering40 stable capabilities. Existing /mcp and restricted Gina schemas unchanged. No new resident service, Caddy edit or Compose edit. Deployment baseline is972b019; preserve rollback image sha256:28dc48bf07b8470121320a3e1bf880805e85cc3cc604a37e005026e62843ad68. Phase2 live/CI gates remain pending.
+
+## Phase 2 gate PASS — 2026-09-20
+
+Runtime `7289282f09d787f6bb78f18f9da656e2fa1fae63`, package1.9.0 / adapter1.0.0 / unchanged client0.8.6 pin. Image `sha256:75ad7cd8e712937870f3552569592a1cd63b122fb2d8d44d13e50d5c968075d7`; healthy. Guarded deployment verified all six peers and protected files unchanged. Release checkpoint `/home/deploy/.local/state/anylist-mcp/releases/7289282f09d787f6bb78f18f9da656e2fa1fae63`; rollback driver `/home/deploy/anylist-release-7289282f/deploy_anylist.py`.
+
+132 Node tests /18 release tests pass. Hosted CI [35531681753](https://github.com/mathiticus3/anylist-mcp/actions/runs/35531681753) passed Node20/24/26. Real public HTTPS acceptance passed78 checks, including bearer failures, authenticated readiness, full shopping/favorites/recipe/collection/meal CRUD within qualified semantics, recipe URL import/normalize, raw-text normalize, exact fresh readback, 409 ambiguity with two disposable same-name recipes, malformed input and all cleanup. Receipt `phase2-actions-receipt.json`. Fetched public OpenAPI3.1 validates with SwaggerParser; 30 operationIds cover40 stable MCP actions. Existing MCP legacy reads and all-tools inventory also passed within the same harness. Unchanged punchlist-sync module again completed client_credentials/MCP structured read of93 items, zero writes. No household migration or unrelated item mutation. No residual disposable records; temporary acceptance bearer deleted.
+
+Dedicated key provisioned in existing /data volume, no secret printed. Mode600 raw .env plus verifier are backed up encrypted in `/home/deploy/web-caddy/backups/anylist-campaign-20260920/gpt-actions-credential.tar.enc`, SHA256 `5a7b2e18a40c088705077e154b695e150568bcd64cbe0f606716d9184c583edd`; decrypt/list verified. Uses separate recovery.key already retained for the campaign; no secret in git. Revocation is independent of AnyList/MCP credentials.
+
+Phase3 is now permitted. Private GPT editor import/key paste remains an owner UI setup step; no private GPT creation claim is made. Exact setup is ACTIONS.md.
