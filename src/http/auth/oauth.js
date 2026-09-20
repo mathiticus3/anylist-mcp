@@ -1,3 +1,4 @@
+import {BOUNDED_PROFILES,assertBoundedScope} from '../../profiles/bounded-policy.js';
 import {CANARY_WRITE_PROFILE} from '../../profiles/canary-write-policy.js';
 import {CANARY_PROFILE} from '../../profiles/canary-policy.js';
 import { Router } from "express";
@@ -336,7 +337,7 @@ async function handleClientCredentialsGrant(req, res) {
     scope: "mcp",
   });
 
-  console.log([CANARY_PROFILE,CANARY_WRITE_PROFILE].includes(client.profile) ? "[oauth] client_credentials issued for dedicated canary profile" : `[oauth] client_credentials token issued for client_id=${client_id.slice(0, 8)}… user_id=${client.user_id}`);
+  console.log([CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(client.profile) ? "[oauth] client_credentials issued for dedicated canary profile" : `[oauth] client_credentials token issued for client_id=${client_id.slice(0, 8)}… user_id=${client.user_id}`);
   res.json({
     access_token: accessToken,
     token_type: "Bearer",
@@ -496,7 +497,10 @@ export function requireBearerToken(req, res, next) {
     res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", error="invalid_token"`);
     return res.status(401).json({ error: "invalid_token" });
   }
-  if(!["full","gina",CANARY_PROFILE,CANARY_WRITE_PROFILE].includes(client.profile||"full"))return res.status(401).json({error:"invalid_client_profile"});
+  if(!["full","gina",CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(client.profile||"full"))return res.status(401).json({error:"invalid_client_profile"});
+  if(BOUNDED_PROFILES.includes(client.profile)){
+    try{assertBoundedScope(client.profile,client.source);}catch{return res.status(401).json({error:'bounded_policy_unavailable'});}
+  }
   const callbackPolicy = policyForRedirectUri(client.redirect_uri);
   req.userId = record.user_id;
   req.clientId = record.client_id;

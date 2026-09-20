@@ -1,3 +1,4 @@
+import {BOUNDED_PROFILES} from '../../profiles/bounded-policy.js';
 import {CANARY_WRITE_PROFILE} from '../../profiles/canary-write-policy.js';
 import {CANARY_PROFILE} from '../../profiles/canary-policy.js';
 export const GINA_OPENWEBUI_REDIRECT_URI =
@@ -128,7 +129,7 @@ export function validateClientRedirectUri(client, redirectUri, allowedRedirectUr
   if (!client) {
     throw new OAuthPolicyError("invalid_client", "Unknown OAuth client.", 401);
   }
-  if([CANARY_PROFILE,CANARY_WRITE_PROFILE].includes(client.profile))throw new OAuthPolicyError("unauthorized_client", "This dedicated machine client supports client_credentials only.", 403);
+  if([CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(client.profile))throw new OAuthPolicyError("unauthorized_client", "This dedicated machine client supports client_credentials only.", 403);
   validateRedirectUriSyntax(redirectUri);
 
   if (client.redirect_uri) {
