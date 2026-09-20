@@ -781,10 +781,20 @@ def oauth_boundary_checks(prod: dict) -> None:
 def assert_legacy_rollback_profiles(prod: dict, rollback_image: str) -> None:
     # Older runtimes treat unknown profiles as full. Never restore one while a
     # newly restricted machine identity still exists, even with no active tokens.
+    # This exact reviewed baseline understands the readonly identity. Preserve it
+    # when rolling back the separately provisioned writer; unknown images retain
+    # the historical conservative full/gina-only gate.
+    target_commit = run(["docker", "image", "inspect", "--format",
+                         '{{index .Config.Labels "io.vector72.release.commit"}}', rollback_image]).strip()
+    allowed = ["full", "gina"]
+    if target_commit == "f085f2d29317fdc658be0b9a98a0dfead176d44d":
+        allowed.append("gina_canary_readonly")
     code = """const Database=require('better-sqlite3');
 const db=new Database('/data/anylist-mcp.db',{readonly:true});
-const n=db.prepare("SELECT COUNT(*) AS n FROM oauth_clients WHERE profile NOT IN ('full','gina')").get().n;
-process.stdout.write(JSON.stringify({restrictedClients:Number(n)}));"""
+const allowed=ALLOWED_PROFILES;
+const rows=db.prepare('SELECT profile FROM oauth_clients').all();
+const n=rows.filter(r=>!allowed.includes(r.profile||'full')).length;
+process.stdout.write(JSON.stringify({restrictedClients:Number(n)}));""".replace("ALLOWED_PROFILES", json.dumps(allowed))
     result = json.loads(run([
         "docker", "run", "--rm", "--network", "none", "--entrypoint", "node",
         "--mount", f"type=volume,src={prod['volume_name']},dst=/data,readonly",

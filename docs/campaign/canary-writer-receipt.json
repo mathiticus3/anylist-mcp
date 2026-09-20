@@ -1,0 +1,95 @@
+{
+  "runtimeCommit": "b59db0a6d5fb400b1eba9a7ed4e0c2206743b15e",
+  "mcpVersion": "1.9.3",
+  "image": "sha256:5c1cab2c51849b405d9467242ed7c9a15eed127ae5b269a6af579b468ed8c8b8",
+  "health": "healthy",
+  "ciRun": 35540043866,
+  "nodeTests": 147,
+  "releaseTests": 20,
+  "writerStatus": {
+    "clientIdSha256": null,
+    "clientName": "gina-canary-harness-write",
+    "profile": "gina_canary_write",
+    "source": "gina/action-harness-write",
+    "allowedListId": "297966c79aa64357a5f765bb2214470c",
+    "readOnly": false,
+    "boundedWriter": true,
+    "executionApprovalIncluded": false,
+    "credentialFile": "/data/.env.gina-canary-harness-write",
+    "secretPrinted": false,
+    "registered": false,
+    "privateCredentialPresent": false
+  },
+  "readonlyRegression": {
+    "ok": true,
+    "observedAt": "2026-09-20T21:58:44.096Z",
+    "clientIdSha256": "9924d536834d720b54dce17b41a6431f60b0c2416d62507bcad9dc8d7716e814",
+    "clientName": "gina-canary-harness",
+    "profile": "gina_canary_readonly",
+    "source": "gina/action-harness-readonly",
+    "grant": "client_credentials",
+    "tokenEndpoint": "https://anylist.vector72.io/token",
+    "mcpEndpoint": "https://anylist.vector72.io/mcp",
+    "allowedListId": "297966c79aa64357a5f765bb2214470c",
+    "readOnly": true,
+    "mutationsEnabled": false,
+    "providerWrites": 0,
+    "permissionMutationProbes": 0,
+    "itemCounts": [
+      2,
+      2
+    ],
+    "independentFreshReads": true,
+    "equalObservableSnapshots": true,
+    "snapshotSha256": "5163b184787d24c85f6d5b6cae18a3126f90a9b6ddd68e3f9247e5eaffb6581c",
+    "shoppingSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list_lists",
+            "list_items"
+          ]
+        },
+        "list_id": {
+          "type": "string",
+          "const": "297966c79aa64357a5f765bb2214470c"
+        },
+        "response_format": {
+          "type": "string",
+          "const": "structured"
+        },
+        "include_checked": {
+          "type": "boolean",
+          "const": true
+        },
+        "include_notes": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "action",
+        "list_id"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "credentialFile": "/data/.env.gina-canary-harness",
+    "secretPrinted": false
+  },
+  "writerProvisioning": "BLOCKED_PENDING_DIRECT_OWNER_APPROVAL",
+  "localWriterCredentialDelivered": false,
+  "providerWrites": 0,
+  "permissionMutationProbes": 0,
+  "punchlistReadItems": 93,
+  "triliumWrites": 0,
+  "backup": {
+    "path": "/home/deploy/web-caddy/backups/anylist-campaign-20260920/pre-canary-writer.tar.gz.enc",
+    "sha256": "c0315ec3756bb1739370205598da03ddeaf7f9cbeb4084ebd8b7397101dac093",
+    "decryptVerified": true
+  },
+  "rollbackGuard": "reviewed-readonly-baseline-compatible",
+  "rollbackPerformed": false
+}
