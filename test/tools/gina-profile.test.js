@@ -95,7 +95,7 @@ describe("Gina AnyList tool profile", () => {
     assert.equal(client._collections.length, 1);
   });
 
-  it("does not alter the legacy full tool surface", () => {
+  it("preserves legacy tools while adding the service capability tool", () => {
     const legacy = createMockServer();
     registerAllTools(legacy.server, () => Promise.resolve(client));
     assert.deepEqual(Object.keys(legacy.handlers), [
@@ -104,6 +104,7 @@ describe("Gina AnyList tool profile", () => {
       "recipes",
       "meal_plan",
       "recipe_collections",
+      "service",
     ]);
     assert.equal(legacy.toolConfigs.shopping.annotations.destructiveHint, true);
     assert.equal(legacy.toolConfigs.recipes.annotations.openWorldHint, true);

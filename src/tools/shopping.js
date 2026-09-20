@@ -75,6 +75,8 @@ export function register(server, getClient, options = {}) {
   }
 
   async function resolveItemName(client, itemName, includeChecked = false) {
+    const exactMatches=(client.targetList.items||[]).filter(i=>i.name===itemName);
+    if(exactMatches.length>1) throw new Error(`Ambiguous item name: ${itemName}. Use structured response_format with the item ID.`);
     const exact = client.targetList.getItemByName(itemName);
     if (exact) return itemName;
     const matches = findPartialMatches(client, itemName, includeChecked);
