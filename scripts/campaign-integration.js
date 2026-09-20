@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 // Run inside the AnyList container. Credentials and household contents never leave it.
 // Disposable names only. Temporary MCP bearer deleted in finally. No Trilium writes.
+import {readFileSync} from 'node:fs';
+import {projectionFor} from '../src/actions/projection.js';
 import { randomBytes } from 'node:crypto';
 import { getDb, saveOAuthTokens } from '../src/http/db.js';
 import assert from 'node:assert/strict';
 const base=process.env.CAMPAIGN_BASE_URL||'http://127.0.0.1:3000';
+const actions=process.env.CAMPAIGN_ACTIONS==='1';
+const actionsToken=actions?readFileSync((process.env.DATA_DIR||'/data')+'/.env.gpt-actions','utf8').trim().split('=')[1]:null;
 const prefix=`V72-CAMPAIGN-${Date.now()}-`;
 const token=randomBytes(32).toString('hex'), refresh=randomBytes(32).toString('hex');
 const db=getDb();
@@ -19,9 +23,11 @@ async function rpc(method,params) {
  assert.ok(!result.error,`RPC ${method} error ${result.error?.code}`);return result.result;
 }
 async function call(tool,action,params={},legacy=false) {
- const result=await rpc('tools/call',{name:tool,arguments:{...(action?{action}:{}),...params,...(!legacy&&tool!=='service'?{response_format:'structured'}:{})}});
+ let result;
+ if(actions&&!legacy){const p=projectionFor(tool,action,params);const res=await fetch(base+'/actions/'+p.entry.operationId,{method:'POST',headers:{Authorization:`Bearer ${actionsToken}`,'Content-Type':'application/json'},body:JSON.stringify(p.input),signal:AbortSignal.timeout(45000)});const body=await res.json();result={isError:!res.ok||!body.ok,structuredContent:body};}
+ else result=await rpc('tools/call',{name:tool,arguments:{...(action?{action}:{}),...params,...(!legacy&&tool!=='service'?{response_format:'structured'}:{})}});
  if(result.isError){const e=Error(`${tool}/${action}: ${result.structuredContent?.error?.code||'legacy_error'}`);e.result=result.structuredContent;throw e;}
- receipts.push({tool,action:action||'health',legacy,ok:true});return legacy?result:result.structuredContent;
+ receipts.push({tool,action:action||'health',legacy,transport:actions&&!legacy?'https-actions':'mcp',ok:true});return legacy?result:result.structuredContent;
 }
 const shop=(a,p={})=>call('shopping',a,{list_id:listId,...p});
 const assertFresh=async(check)=>{await call('service','refresh');await check();};
@@ -47,6 +53,7 @@ async function cleanup() {
 }
 let failed;
 try {
+ if(actions){assert.equal((await fetch(base+'/actions/listShoppingLists',{method:'POST'})).status,401);assert.equal((await fetch(base+'/readyz')).status,401);assert.equal((await fetch(base+'/readyz',{headers:{Authorization:`Bearer ${actionsToken}`}})).status,200);const spec=await (await fetch(base+'/openapi.json')).json();assert.equal(spec.openapi,'3.1.0');assert.equal(Object.keys(spec.paths).length,30);assert.equal((await fetch(base+'/privacy')).status,200);receipts.push({httpAuth:true,readiness:true,openapi:true,privacy:true,ok:true});}
  await rpc('initialize',{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'Vector72 capability acceptance',version:'1.0'}});
  const inventory=await rpc('tools/list',{});assert.ok(inventory.tools.some(t=>t.name==='shopping'));receipts.push({inventory:inventory.tools.map(t=>({name:t.name,actions:t.inputSchema.properties.action?.enum})),ok:true});
  await call('health_check',null,{},true);
@@ -94,14 +101,23 @@ try {
  await call('meal_plan','delete_event',{event_id:meal.identifier});
  await call('recipe_collections','delete',{id:col.identifier});await call('recipes','delete',{id:r.identifier});await shop('delete_item',{id:first.identifier});
  for(const [tool,action] of [['recipes','list'],['recipe_collections','list'],['meal_plan','list_events'],['meal_plan','list_labels']])await call(tool,action,tool==='meal_plan'&&action==='list_events'?{date:'2099-01-01'}:{},true);
+ if(actions){
+ const duplicate=(await call('recipes','create',{name:prefix+'Duplicate'})).recipe;
+ await call('recipes','update',{id:duplicate.identifier,new_name:prefix+'Collision'});
+ const second=(await call('recipes','create',{name:prefix+'Second'})).recipe;await call('recipes','update',{id:second.identifier,new_name:prefix+'Collision'});
+ const res=await fetch(base+'/actions/getRecipe',{method:'POST',headers:{Authorization:`Bearer ${actionsToken}`,'Content-Type':'application/json'},body:JSON.stringify({name:prefix+'Collision'})});assert.equal(res.status,409);const ambiguity=await res.json();assert.equal(ambiguity.error.code,'AMBIGUOUS');assert.equal(ambiguity.error.candidates.length,2);
+ await call('recipes','delete',{id:duplicate.identifier});await call('recipes','delete',{id:second.identifier});
+ const bad=await fetch(base+'/actions/addShoppingItems',{method:'POST',headers:{Authorization:`Bearer ${actionsToken}`,'Content-Type':'application/json'},body:JSON.stringify({list_id:listId,items:[]})});assert.equal(bad.status,400);receipts.push({httpAmbiguity:true,httpMalformed:true,ok:true});
+ }
  const malformed=await rpc('tools/call',{name:'shopping',arguments:{action:'add_items',response_format:'structured',list_id:listId,items:[]}});assert.equal(malformed.isError,true);
  const missing=await rpc('tools/call',{name:'shopping',arguments:{action:'delete_item',response_format:'structured',list_id:listId,id:'nonexistent-campaign-item'}});assert.equal(missing.structuredContent.error.code,'NOT_FOUND');
  await call('service','status');await call('service','capabilities');
 } catch(e){failed={message:e.message,error:e.result?.error};}
 finally {
  const cleanupErrors=await cleanup();
+ for(const [tool,action,key,params] of [['recipes','list','recipes',{search:prefix}],['recipe_collections','list','collections',{}],['meal_plan','list_events','events',{date:'2099-01-01'}]])try{const fresh=await call(tool,action,params);if(fresh[key].some(o=>(o.name||o.title||'').startsWith(prefix)))cleanupErrors.push(tool+' residue');}catch{cleanupErrors.push(tool+' absence unverified');}
  if(session)await fetch(base+'/mcp',{method:'DELETE',headers:{Authorization:`Bearer ${token}`,'Mcp-Session-Id':session}}).catch(()=>{});
  db.prepare('DELETE FROM oauth_tokens WHERE access_token=?').run(token);
- console.log(JSON.stringify({ok:!failed&&!cleanupErrors.length,prefix,receipts,failed,cleanupErrors,temporaryBearerDeleted:true}));
+ console.log(JSON.stringify({ok:!failed&&!cleanupErrors.length,transport:actions?'https-actions':'mcp',prefix,receipts,failed,cleanupErrors,temporaryBearerDeleted:true}));
  if(failed||cleanupErrors.length)process.exitCode=1;
 }

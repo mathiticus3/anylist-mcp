@@ -29,3 +29,7 @@ Runtime `972b019389e2d6ad9ebd6e7f93527b524ac6a249`, package 1.8.0, pinned client
 punchlist-sync unchanged: 30 regression tests pass; actual existing client_credentials/MCP structured read returned 93 items with zero Trilium writes. Legacy tool regression suite and live health/discovery/list/recipe/collection/meal reads pass. The restricted Gina profile remains unchanged. No household list was created/deleted; all acceptance writes used uniquely prefixed objects on the pre-existing scratch list and disposable account recipes/collections/2099 meal events.
 
 Explained gaps: shopping-list CRUD/store CRUD/collection rename/meal title-date-label-recipe updates lack a safe implemented primitive in the pinned library. Meal details updates are qualified. Uncheck-all, raw credentials/RPC and broken favorite per-set category helpers are intentionally excluded. No unexplained supported-client gap remains. Phase 2 is authorized to start.
+
+## Phase 2 preparation — not yet accepted
+
+Phase1 PR5 merged into the deployed compatibility line after final test/docs CI run35530886683 passed. Adapter implementation is a same-process projection over registered MCP handlers with dedicated independently revocable bearer authentication, generated OpenAPI3.1 and 30 operations covering40 stable capabilities. Existing /mcp and restricted Gina schemas unchanged. No new resident service, Caddy edit or Compose edit. Deployment baseline is972b019; preserve rollback image sha256:28dc48bf07b8470121320a3e1bf880805e85cc3cc604a37e005026e62843ad68. Phase2 live/CI gates remain pending.

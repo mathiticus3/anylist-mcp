@@ -3,7 +3,7 @@
   "service": "anylist-mcp",
   "expected_baseline": {
     "branch": null,
-    "commit": "ebce39143149094f354ac8ac37f120f5ddef3955",
+    "commit": "972b019389e2d6ad9ebd6e7f93527b524ac6a249",
     "origin": "https://github.com/mathiticus3/anylist-mcp.git",
     "submodule_path": "anylist-js",
     "submodule_commit": "1d3c9816c4ecfc3b2d8c5c48dd35619b125381c3",

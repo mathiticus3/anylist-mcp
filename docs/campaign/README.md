@@ -25,3 +25,5 @@ Source version 1.8.0; pinned anylist-js 0.8.6 / 1d3c9816. Latest upstream has a 
 ## Gates
 
 Phase 1 is not complete until live integration, punchlist-sync and hosted CI receipts pass. Phase 2 implementation starts after that gate; Phase 3 starts only after Phase 2's live API parity gate. Current evidence is stored alongside this document as sanitized receipt files.
+
+Phase2 operator/GPT setup: [ACTIONS.md](ACTIONS.md). Exact generated API: [openapi.json](openapi.json). Combined stable MCP/GPT matrix: [CAPABILITIES.md](CAPABILITIES.md). The GPT adapter shares the existing process and calls registered MCP handlers; credentials are separate and independently revocable.
