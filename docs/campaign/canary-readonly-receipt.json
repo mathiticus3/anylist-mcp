@@ -97,7 +97,20 @@
     "identityDigestVerified": true,
     "secretPrinted": false,
     "providerWrites": 0,
-    "ginaIndependentReadQualification": "PENDING_GINA_EXECUTION",
+    "ginaIndependentReadQualification": "PASS",
     "canaryWriteEnabled": false
+  },
+  "ginaIndependentReadQualification": {
+    "observedAt": "2026-09-20T21:39:23Z",
+    "reportedBy": "Gina Action Harness task",
+    "runtimeVersion": "1.9.2",
+    "itemCounts": [
+      2,
+      2
+    ],
+    "equalObservableSnapshots": true,
+    "providerWrites": 0,
+    "permissionMutationProbes": 0,
+    "receiptSha256": "1a2f8c4188bf9d2ab0c3b3b0e0baff90e2e5bd76fa1d2baeb842c66afdccb288"
   }
 }
