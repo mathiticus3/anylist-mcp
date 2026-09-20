@@ -11,7 +11,7 @@ const db=getDb();
 const client=db.prepare("SELECT client_id,user_id FROM oauth_clients WHERE client_name='punchlist-sync' AND profile='full'").get();
 if(!client)throw Error('campaign requires existing punchlist-sync client');
 saveOAuthTokens({accessToken:token,refreshToken:refresh,userId:client.user_id,clientId:client.client_id,scope:'mcp'});
-let session,id=1,listName,listId;const receipts=[];
+let session,id=1,listName,listId;const receipts=[];const importedIds=[];
 async function rpc(method,params) {
  const res=await fetch(base+'/mcp',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Accept:'application/json, text/event-stream',...(session?{'Mcp-Session-Id':session}:{}),'MCP-Protocol-Version':'2025-06-18'},body:JSON.stringify({jsonrpc:'2.0',id:id++,method,params}),signal:AbortSignal.timeout(60000)});
  assert.equal(res.status,200,`RPC HTTP ${res.status}`);session=res.headers.get('mcp-session-id')||session;
@@ -27,6 +27,7 @@ const shop=(a,p={})=>call('shopping',a,{list_id:listId,...p});
 const assertFresh=async(check)=>{await call('service','refresh');await check();};
 async function cleanup() {
  const errors=[];
+ for(const id of importedIds)try{await call('recipes','delete',{id});}catch(e){errors.push('import cleanup:'+e.message);}
  if(listId) {
    for(const [read,del] of [['list_items','delete_item'],['get_favorites','remove_favorite']])try{
     const result=await shop(read,read==='list_items'?{include_checked:true}:{});
@@ -70,6 +71,9 @@ try {
  await call('recipes','update',{id:r.identifier,new_name:prefix+'Recipe updated',prep_time:5});
  assert.equal((await call('recipes','get',{id:r.identifier})).recipe.note,'preserve');
  await call('recipes','list',{search:prefix});
+ const fixtureUrl='https://raw.githubusercontent.com/mathiticus3/anylist-mcp/codex/anylist-stable-parity/test/fixtures/campaign-recipe.html';
+ await call('recipes','normalize',{url:fixtureUrl});
+ const imported=await call('recipes','import_url',{url:fixtureUrl});importedIds.push(imported.recipe.identifier);
  await call('recipes','normalize',{text:prefix+'Normalized\nIngredients\n1 cup water\nInstructions\nBoil water.'});
  const col=(await call('recipe_collections','create',{name:prefix+'Collection'})).collection;
  await call('recipe_collections','add_recipe',{id:col.identifier,recipe_id:r.identifier});

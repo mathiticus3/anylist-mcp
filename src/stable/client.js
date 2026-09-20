@@ -113,7 +113,12 @@ export async function executeClientCapability(c,tool,action,input) {
     if(action==='update_item'||action==='update_favorite')return {list:listRef,item:await updateItem(c,list,item,p,favorite)};
   }
   if(tool==='recipes') {
-    if(action==='normalize'||action==='import_url') {
+    if(action==='import_url') {
+      const imported=await c.importRecipeFromUrl(p.url);
+      const saved=resolve(await recipes(c),{id:imported.identifier},'recipe');
+      return {recipe:recipeView(saved),saved:true};
+    }
+    if(action==='normalize') {
       if(!p.url && !p.text)invalid('Provide a public HTTPS URL or recipe text.');
       const normalized=await normalizeRecipe(p);
       if(p.save || action==='import_url') {
