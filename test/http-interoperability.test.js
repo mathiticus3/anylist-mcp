@@ -296,3 +296,29 @@ test('dedicated machine canary registration is idempotent, read-only, browser-bi
  await provision('--revoke');assert.equal(db.prepare('SELECT COUNT(*) n FROM oauth_clients').get().n,0);assert.equal((await tokenRequest()).status,401);assert.equal((await fetch(base+'/mcp',{headers:{Authorization:'Bearer '+token.access_token,'Mcp-Session-Id':session}})).status,401);
  assert.ok(!output.join('').includes(secret.GINA_CANARY_CLIENT_SECRET));assert.ok(!output.join('').includes(token.access_token));
 });
+
+test('separate writer registration is idempotent, tightly scoped, browser-binding blocked and revocable', {timeout:30000}, async t=>{
+ const dataDir=await mkdtemp(path.join(os.tmpdir(),'anylist-canary-auth-'));
+ const port=await reservePort(),base=`http://127.0.0.1:${port}`,allowed=path.join(dataDir,'allowed.txt');await writeFile(allowed,'fixture@example.invalid\n');
+ const env={...process.env,DATA_DIR:dataDir,ALLOWED_EMAILS_FILE:allowed,PORT:String(port),BASE_URL:base,SERVER_SECRET_KEY:'0'.repeat(64),SESSION_SECRET:'fixture'};
+ const output=[],child=spawn(process.execPath,['src/http/index.js'],{cwd:path.resolve(import.meta.dirname,'..'),env,stdio:['ignore','pipe','pipe']});child.stdout.on('data',x=>output.push(x.toString()));child.stderr.on('data',x=>output.push(x.toString()));t.after(async()=>{await stopServer(child);await rm(dataDir,{recursive:true,force:true});});await waitForServer(base,child,output);
+ const db=new Database(path.join(dataDir,'anylist-mcp.db'));t.after(()=>db.close());db.prepare('INSERT INTO users(id,email)VALUES(?,?)').run('owner','fixture@example.invalid');db.prepare('INSERT INTO anylist_credentials(user_id,encrypted_user,encrypted_pass)VALUES(?,?,?)').run('owner','unused-test-only','unused-test-only');
+ const {execFile}=await import('node:child_process'),{promisify}=await import('node:util'),{readFile,stat}=await import('node:fs/promises');const exec=promisify(execFile);
+ const provision=async mode=>exec(process.execPath,['scripts/provision-canary-writer.js',mode],{cwd:path.resolve(import.meta.dirname,'..'),env});
+ await exec(process.execPath,['scripts/provision-canary-client.js','--provision'],{cwd:path.resolve(import.meta.dirname,'..'),env});
+ const verifierBefore=db.prepare("SELECT * FROM oauth_clients WHERE profile='gina_canary_readonly'").get();
+ const first=await provision('--provision');assert.equal(JSON.parse(first.stdout).created,true);const second=await provision('--provision');assert.equal(JSON.parse(second.stdout).created,false);assert.equal(db.prepare('SELECT COUNT(*) n FROM oauth_clients').get().n,2);
+ const file=path.join(dataDir,'.env.gina-canary-harness-write');assert.equal((await stat(file)).mode&0o077,0);const secret=Object.fromEntries((await readFile(file,'utf8')).trim().split('\n').map(l=>l.split('=')));
+ assert.ok(!first.stdout.includes(secret.GINA_CANARY_WRITE_CLIENT_SECRET));assert.ok(!first.stdout.includes(secret.GINA_CANARY_WRITE_CLIENT_ID));
+ const tokenRequest=()=>fetch(base+'/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'client_credentials',client_id:secret.GINA_CANARY_WRITE_CLIENT_ID,client_secret:secret.GINA_CANARY_WRITE_CLIENT_SECRET})});
+ const issued=await tokenRequest();assert.equal(issued.status,200);const token=await issued.json();let session,sequence=1;
+ async function rpc(method,params){const response=await fetch(base+'/mcp',{method:'POST',headers:{Authorization:'Bearer '+token.access_token,Accept:'application/json, text/event-stream','Content-Type':'application/json',...(session?{'Mcp-Session-Id':session}:{})},body:JSON.stringify({jsonrpc:'2.0',id:sequence++,method,params})});assert.equal(response.status,200);session=response.headers.get('mcp-session-id')||session;const text=await response.text();return response.headers.get('content-type').includes('text/event-stream')?JSON.parse(text.split('\n').filter(l=>l.startsWith('data:')).at(-1).slice(5)):JSON.parse(text);}
+ await rpc('initialize',{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'fixture',version:'1'}});const inventory=await rpc('tools/list',{});assert.deepEqual(inventory.result.tools.map(t=>t.name),['shopping']);assert.deepEqual(inventory.result.tools[0].inputSchema.properties.action.enum,['add_item','delete_item']);
+ // Synthetic-only denial probes; no configured provider credentials or provider access.
+ const denied=await rpc('tools/call',{name:'shopping',arguments:{action:'delete_item',list_id:secret.ANYLIST_LIST_ID,id:'fixture'}});assert.ok(denied.error||denied.result?.isError);
+ const authorize=await fetch(base+'/authorize?'+new URLSearchParams({client_id:secret.GINA_CANARY_WRITE_CLIENT_ID,redirect_uri:'https://claude.ai/api/mcp/auth_callback'}),{redirect:'manual'});assert.equal(authorize.status,403);assert.equal(db.prepare("SELECT profile FROM oauth_clients WHERE client_name='gina-canary-harness-write'").get().profile,'gina_canary_write');
+ db.prepare("UPDATE oauth_clients SET profile=? WHERE client_name='gina-canary-harness-write'").run('unknown-restricted');assert.equal((await fetch(base+'/mcp',{headers:{Authorization:'Bearer '+token.access_token}})).status,401);db.prepare("UPDATE oauth_clients SET profile=? WHERE client_name='gina-canary-harness-write'").run('gina_canary_write');
+ await provision('--revoke');assert.equal(db.prepare('SELECT COUNT(*) n FROM oauth_clients').get().n,1);assert.equal((await tokenRequest()).status,401);assert.equal((await fetch(base+'/mcp',{headers:{Authorization:'Bearer '+token.access_token,'Mcp-Session-Id':session}})).status,401);
+ assert.deepEqual(db.prepare("SELECT * FROM oauth_clients WHERE profile='gina_canary_readonly'").get(),verifierBefore);
+ assert.ok(!output.join('').includes(secret.GINA_CANARY_WRITE_CLIENT_ID));assert.ok(!output.join('').includes(secret.GINA_CANARY_WRITE_CLIENT_SECRET));assert.ok(!output.join('').includes(token.access_token));
+});

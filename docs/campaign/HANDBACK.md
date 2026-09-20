@@ -1,6 +1,6 @@
 # Vector72 AnyList campaign handback
 
-2026-09-20 campaign handback. **Later read-only-client follow-up:** runtime1.9.2/f085f2d, dedicated gina_canary_readonly registration. See [CANARY-READONLY.md](CANARY-READONLY.md) and latest DEPLOYMENT.md receipt; no canary writes granted. AnyList is still the source of truth. No Trilium/mcp.vector72.io/Caddy/Compose runtime changes, no household migration, no Gina canary execution or permission expansion.
+2026-09-20 campaign handback. **Separate bounded writer follow-up:** see [CANARY-WRITER.md](CANARY-WRITER.md) and latest DEPLOYMENT.md; setup/discovery authorization only, no live canary writes. **Later read-only-client follow-up:** runtime1.9.2/f085f2d, dedicated gina_canary_readonly registration. See [CANARY-READONLY.md](CANARY-READONLY.md) and latest DEPLOYMENT.md receipt; no canary writes granted. AnyList is still the source of truth. No Trilium/mcp.vector72.io/Caddy/Compose runtime changes, no household migration, no Gina canary execution or permission expansion.
 
 | Phase | Result | Delivered / remaining |
 |---|---|---|

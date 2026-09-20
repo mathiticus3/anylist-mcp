@@ -1,3 +1,5 @@
+import {CANARY_WRITE_PROFILE} from '../profiles/canary-write-policy.js';
+import {registerCanaryWriter} from '../profiles/canary-write-shopping.js';
 import {CANARY_PROFILE} from '../profiles/canary-policy.js';
 import {registerCanaryShopping} from '../profiles/canary-shopping.js';
 import {registerExperimental} from '../experimental/tools.js';
@@ -20,6 +22,7 @@ import { register as registerRecipeCollections } from "./recipe-collections.js";
  */
 export function registerAllTools(server, getClient, options = {}) {
   if(options.profile===CANARY_PROFILE){registerCanaryShopping(server,getClient);return;}
+  if(options.profile===CANARY_WRITE_PROFILE){registerCanaryWriter(server,getClient);return;}
   const rawServer=server;
   server=stableServer(server,getClient,options);
   if (options.profile === "gina") {
