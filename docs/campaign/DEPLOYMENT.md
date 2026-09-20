@@ -43,3 +43,17 @@ Runtime `7289282f09d787f6bb78f18f9da656e2fa1fae63`, package1.9.0 / adapter1.0.0 
 Dedicated key provisioned in existing /data volume, no secret printed. Mode600 raw .env plus verifier are backed up encrypted in `/home/deploy/web-caddy/backups/anylist-campaign-20260920/gpt-actions-credential.tar.enc`, SHA256 `5a7b2e18a40c088705077e154b695e150568bcd64cbe0f606716d9184c583edd`; decrypt/list verified. Uses separate recovery.key already retained for the campaign; no secret in git. Revocation is independent of AnyList/MCP credentials.
 
 Phase3 is now permitted. Private GPT editor import/key paste remains an owner UI setup step; no private GPT creation claim is made. Exact setup is ACTIONS.md.
+
+## Phase 3 bounded preparation
+
+Phase2 PR6 merged after final receipt CI35531963817 passed. Read-only protocol probe confirmed current price records and complete folder snapshots. Isolated client-layer extensions and a separate flag-gated read-only MCP tool implement only those two candidates. Flags default absent/off; stable GPT registry unchanged; no experimental mutation or Gina canary execution. Full evidence/classification is EXPERIMENTAL.md. Live experimental qualification and final deployment receipts pending.
+
+## Phase 3 bounded acceptance PASS — final runtime
+
+Deployed `26392a003c312789c0a531bdd549b992e8bb4441`, package1.9.1, adapter1.0.0, unchanged client0.8.6/1d3c9816. Image `sha256:edae35c2d514c161ac2ecbc9fc3efcdbf89ac78dcc35c54854a421df82d94623`. Guarded deployment passed from7289282; six peers/protected Caddy/Compose/env/volume state unchanged. Checkpoint `/home/deploy/.local/state/anylist-mcp/releases/26392a003c312789c0a531bdd549b992e8bb4441`; rollback driver `/home/deploy/anylist-release-26392a00/deploy_anylist.py`.
+
+135 Node regressions and18 release tests pass; hosted CI [35532296751](https://github.com/mathiticus3/anylist-mcp/actions/runs/35532296751) passed Node20/24/26. Actual MCP experimental qualification at19:28Z verified both read schemas, complete2-folder snapshot,42 priced items/46 stored current price records, all-list paging, independent price disabling while folders remained callable, stable readiness after disabling, and no experimental tool in a newly initialized default session. Provider writes0. Flags file removed and temporary bearer deleted. Receipt `phase3-mcp-receipt.json`. Experiments remain OFF and absent from stable GPT.
+
+Final public OpenAPI matches generated source exactly and validates. Final unchanged punchlist-sync client_credentials/structured read again returned93 items with writes0; timer active and last service result success/exit0. Final Docker health healthy. No new peer service or household migration. Phase1/2 disposable records were cleaned; Phase3 did not create any. Remaining candidate dispositions and next bounded experiments are explicit in EXPERIMENTAL.md.
+
+Estate documentation/ADR33 merged via vector72-io PR368 (sourceed750c2). Runtime changes remain entirely owned by anylist-mcp PR5/6/7 and exact release bundles. Owner-only GPT editor setup remains the only manual stable consumer setup step; no secret value is printed in receipts or documentation.

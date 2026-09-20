@@ -1,3 +1,4 @@
+import {registerExperimental} from '../experimental/tools.js';
 import {stableServer, registerService} from '../stable/tools.js';
 import { register as registerHealth } from "./health.js";
 import { register as registerShopping } from "./shopping.js";
@@ -100,4 +101,5 @@ export function registerAllTools(server, getClient, options = {}) {
   registerMealPlan(server, getClient);
   registerRecipeCollections(server, getClient);
   registerService(rawServer,getClient);
+  registerExperimental(rawServer,getClient);
 }

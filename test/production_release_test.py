@@ -26,7 +26,7 @@ build_spec.loader.exec_module(build_release)
 class ProductionReleaseTests(unittest.TestCase):
     def test_release_spec_is_exactly_scoped_to_live_anylist(self):
         release = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(release["expected_baseline"]["commit"], "972b019389e2d6ad9ebd6e7f93527b524ac6a249")
+        self.assertEqual(release["expected_baseline"]["commit"], "7289282f09d787f6bb78f18f9da656e2fa1fae63")
         self.assertIsNone(release["expected_baseline"]["branch"])
         self.assertEqual(release["production"]["source_directory"], "/home/deploy/web-caddy/anylist-upstream")
         self.assertEqual(release["production"]["volume_name"], "web-caddy_anylist-mcp-data")

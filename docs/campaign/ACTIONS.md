@@ -2,7 +2,7 @@
 
 The same AnyList MCP process serves an HTTPS projection at `https://anylist.vector72.io/actions/<operationId>`. Each fixed route validates its bounded schema and calls the registered MCP tool handler with structured output. The registered handler invokes the same stable client/library implementation and per-user serialization as ordinary MCP. There is no caller-selected RPC, endpoint or library method. AnyList remains the source of truth.
 
-Owning repo: `mathiticus3/anylist-mcp`. Package 1.9.0 / Actions adapter 1.0.0 / client 0.8.6 at 1d3c9816c4ecfc3b2d8c5c48dd35619b125381c3. punchlist-sync has no upgrade requirement. Its existing OAuth /mcp contract and the restricted Gina profile are unchanged. Production source remains the deployed `fix/make-mcp-interoperability` compatibility line; main predates this deployment lineage.
+Owning repo: `mathiticus3/anylist-mcp`. Package 1.9.1 / Actions adapter 1.0.0 / client 0.8.6 at 1d3c9816c4ecfc3b2d8c5c48dd35619b125381c3. punchlist-sync has no upgrade requirement. Its existing OAuth /mcp contract and the restricted Gina profile are unchanged. Production source remains the deployed `fix/make-mcp-interoperability` compatibility line; main predates this deployment lineage.
 
 ## Endpoints and boundaries
 
