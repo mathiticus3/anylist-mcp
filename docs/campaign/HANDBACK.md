@@ -1,6 +1,6 @@
 # Vector72 AnyList campaign handback
 
-2026-09-20. AnyList is still the source of truth. No Trilium/mcp.vector72.io/Caddy/Compose runtime changes, no household migration, no Gina canary execution or permission expansion.
+2026-09-20 campaign handback. **Later read-only-client follow-up:** runtime1.9.2/f085f2d, dedicated gina_canary_readonly registration. See [CANARY-READONLY.md](CANARY-READONLY.md) and latest DEPLOYMENT.md receipt; no canary writes granted. AnyList is still the source of truth. No Trilium/mcp.vector72.io/Caddy/Compose runtime changes, no household migration, no Gina canary execution or permission expansion.
 
 | Phase | Result | Delivered / remaining |
 |---|---|---|
@@ -42,6 +42,6 @@ Shortest path: ChatGPT → Explore GPTs → Create → Configure → name above 
 
 [MCP](https://anylist.vector72.io/mcp) keeps OAuth; unauthenticated401 expected. [healthz](https://anylist.vector72.io/healthz) public liveness; /readyz requires GPT bearer and checks fresh AnyList readiness. /actions paths use that separate bearer.
 
-Rollback the final runtime with `/home/deploy/anylist-release-26392a00/deploy_anylist.py rollback --candidate 26392a003c312789c0a531bdd549b992e8bb4441`; prior healthy Actions runtime7289282 is retained. Experiments alone need only flag removal, already the default. Older checkpoints preserve Phase1 and original baseline201e1fa. Encrypted backup paths/hashes and exact previous images are in DEPLOYMENT.md/BASELINE.md; keys remain box-side. No proxy rollback needed.
+**Current rollback after the dedicated-client follow-up:** first revoke gina-canary-harness with `docker exec anylist-mcp node scripts/provision-canary-client.js --revoke` and remove its local private delivery copy if one was approved. Then use `/home/deploy/anylist-release-f085f2d2/deploy_anylist.py rollback --candidate f085f2d29317fdc658be0b9a98a0dfead176d44d`. This guarded driver refuses old-code restoration while a custom-profile registration exists. Never use retained older drivers while the canary client is registered: old code would treat its unknown profile as full. Prior runtime26392a0 is retained. Experiments alone need only flag removal, already the default. Older checkpoints preserve Phase1 and original baseline201e1fa. Encrypted backup paths/hashes and exact previous images are in DEPLOYMENT.md/BASELINE.md; keys remain box-side. No proxy rollback needed.
 
 The Gina coordination artifact is separate operational evidence. Provider shopping readiness is true for an authorized full-profile adapter; existing restricted Gina credentials still lack exact-ID removal. No harness credential was created or silently reused, and readiness does not authorize its canary.
