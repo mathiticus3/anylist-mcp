@@ -1,0 +1,120 @@
+{
+  "runtime": "209b39c255fa979614926a0658cc2234bf1ec2a4",
+  "version": "1.9.4",
+  "image": "sha256:0e56f3da4f306d484386ea4cdd58fc27d4fc0d310c9cf6c3a0b96d0d03070b0d",
+  "sourcePr": "https://github.com/mathiticus3/anylist-mcp/pull/12",
+  "sourceMerge": "98eadbd3ddeb8317b4488e8aa4a203508327407f",
+  "ci": "https://github.com/mathiticus3/anylist-mcp/actions/runs/35542283794",
+  "nodeTests": 160,
+  "releaseTests": 21,
+  "providerWrites": 0,
+  "permissionMutationProbes": 0,
+  "privateDelivery": {
+    "complete": true,
+    "fileMode": "0600",
+    "directoryMode": "0700",
+    "directOwnerApproval": true,
+    "secretPrinted": false
+  },
+  "qualifications": [
+    {
+      "ok": true,
+      "role": "read",
+      "observedAt": "2026-09-20T22:55:03.355Z",
+      "clientName": "gina-bounded-shopping-read",
+      "profile": "gina_bounded_read",
+      "clientIdSha256": "18dc0d9a5ca5e392ee9af81cbd8f871e2178f942a60728451e8535f0a00e7d3e",
+      "bindingSha256": "c476800c71dc27c7a30b7e553e27a36cdcb1da4307da95ff95ba13b421ac084c",
+      "serverVersion": "1.9.4",
+      "schemaSha256": "2bef63be137fe036d9b9584212bf24573256c050cebf2432c7e90d6261abb8b4",
+      "toolCalls": 2,
+      "providerWrites": 0,
+      "permissionMutationProbes": 0,
+      "itemCounts": [
+        2509,
+        2509
+      ],
+      "checkedCounts": [
+        2496,
+        2496
+      ],
+      "wireBytes": [
+        921247,
+        921247
+      ],
+      "resultBytes": [
+        921190,
+        921190
+      ],
+      "equalObservableSnapshots": true,
+      "snapshotSha256": "cc520ffc4c54fc1a9f46ed3d346a30d8459c7c50e90eaf6e0b438862940de633",
+      "freshReadAt": [
+        "2026-09-20T22:55:02.542Z",
+        "2026-09-20T22:55:03.209Z"
+      ],
+      "secretPrinted": false,
+      "exactSchemaLocation": "Private provider coordination artifact; household target omitted from git."
+    },
+    {
+      "ok": true,
+      "role": "add",
+      "observedAt": "2026-09-20T22:56:15.705Z",
+      "clientName": "gina-bounded-shopping-add",
+      "profile": "gina_bounded_add",
+      "clientIdSha256": "6f7506946a0317edfa5b24f59ee509b51f958f1b21c31471a4ac87791caa6f06",
+      "bindingSha256": "c476800c71dc27c7a30b7e553e27a36cdcb1da4307da95ff95ba13b421ac084c",
+      "serverVersion": "1.9.4",
+      "schemaSha256": "86b3627e13c97dbee6b12191a3af0d8bd59ad419a4695cdcb6ccc97db1b8f647",
+      "toolCalls": 0,
+      "providerWrites": 0,
+      "permissionMutationProbes": 0,
+      "secretPrinted": false,
+      "exactSchemaLocation": "Private provider coordination artifact; household target omitted from git."
+    }
+  ],
+  "regressions": {
+    "canaryReaderItemCounts": [
+      2,
+      2
+    ],
+    "canaryWriterToolCalls": 0,
+    "punchlistReadItems": 93,
+    "punchlistWrites": 0,
+    "triliumWrites": 0,
+    "gptAuthenticatedReadiness": true,
+    "openapi": "3.1.0",
+    "gptOperations": 30
+  },
+  "independentHarnessQualification": {
+    "reportedBy": "Gina task",
+    "result": "PASS",
+    "client": "actual MacBook own identities",
+    "serverVersion": "1.9.4",
+    "exactSchemasMatched": true,
+    "itemCounts": [
+      2509,
+      2509
+    ],
+    "checkedCounts": [
+      2496,
+      2496
+    ],
+    "equalObservableSnapshots": true,
+    "requestedItemDisposition": "ITEM_ALREADY_EXISTS",
+    "actions": 0,
+    "enabled": 0,
+    "writerToolCalls": 0,
+    "executableHashMinted": false,
+    "providerRevisionFrozen": true
+  },
+  "rollback": {
+    "previousRuntime": "b59db0a6d5fb400b1eba9a7ed4e0c2206743b15e",
+    "previousImage": "sha256:5c1cab2c51849b405d9467242ed7c9a15eed127ae5b269a6af579b468ed8c8b8",
+    "guard": "blocked_before_restore",
+    "rollbackPerformed": false,
+    "requiresRevoke": [
+      "gina-bounded-shopping-read",
+      "gina-bounded-shopping-add"
+    ]
+  }
+}

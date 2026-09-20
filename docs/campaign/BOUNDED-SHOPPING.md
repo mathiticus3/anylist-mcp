@@ -1,8 +1,8 @@
-# Separate fixed-target shopping reader and add-only writer — PREPARATION
+# Separate fixed-target shopping reader and add-only writer
 
-Status: source/synthetic tests only. No deployment, real policy installation, credential provisioning or provider operation is authorized by this preparation. The selected household list name/ID belongs only in the private coordination artifact and box policy, not git. Existing canary/Gina/GPT/punchlist scopes remain unchanged. Gina owns shopping.add_new_item policy, journal and approvals; provider owner owns this implementation/auth/deployment.
+Status: deployed and both private credentials delivered after owner authorization on2026-09-20. Source209b39c/MCP1.9.4, [PR12](https://github.com/mathiticus3/anylist-mcp/pull/12) merged. Provider live reader qualification passed before enabling add; add discovery made zero tool calls. Gina owns independent qualification and exact-action approval. No household add was performed by this provider task. See latest [deployment receipt](DEPLOYMENT.md) and [sanitized evidence](bounded-shopping-receipt.json). Household target and exact emitted schemas remain private; all existing scopes are unchanged.
 
-## Proposed authority and schema
+## Authority and schema
 
 Two independent confidential clients use the existing client_credentials grant:
 
@@ -33,7 +33,7 @@ One authenticated getLists(true) refresh selects the exact target, maps ALL retu
 
 Limits:10000 items and8MiB UTF-8 serialized MCP tool-result JSON. Text content is a short summary; full data exists once in structuredContent, not a second prose/JSON duplicate. Oversize returns RESPONSE_TOO_LARGE, complete=false and NO partial items. JSON-RPC/SSE framing adds a small envelope; the independent client's response cap must accommodate8MiB plus framing (e.g.9MiB), then verify the8MiB tool-result bound. GPT Actions'95000-character projection cap is unrelated; this is direct MCP only.
 
-Synthetic real HTTP/MCP test with2509 mixed checked/unchecked records, exact notes/IDs/quantity/order,512-byte note padding and Unicode returned1,737,561 bytes with complete=true. Handler test also checks2509 records without alteration. Above-byte/count-bound fixtures fail closed, including Unicode byte accounting. This proves transport/serialization under a representative synthetic workload, NOT the actual selected list's size or freshness. The real2509-item list must be qualified via the NEW reader after explicit setup approval; no real household item contents were fetched for this preparation. The client library still fetches whole-account list data internally; mapping/output bounds cannot bound that upstream allocation.
+Synthetic real HTTP/MCP test with2509 mixed checked/unchecked records, exact notes/IDs/quantity/order,512-byte note padding and Unicode returned1,737,561 bytes with complete=true. Handler test also checks2509 records without alteration. Above-byte/count-bound fixtures fail closed, including Unicode byte accounting. This synthetic result is distinct from the later authorized live qualification: two complete2509-item snapshots,921190 result bytes each, equal observable state. The original source preparation fetched no household contents; later owner qualification used the new reader only, with no item contents retained in receipts. The client library still fetches whole-account list data internally; mapping/output bounds cannot bound that upstream allocation.
 
 ## Add semantics and limits
 
@@ -43,7 +43,7 @@ Result ACKNOWLEDGED includes canonical created ID and requires independent reade
 
 Same-process participating calls serialize; external clients/processes may race between refresh and add. No external CAS/exactly-once guarantee. Harness owns per-action approvals, budget and recovery. If an add-only action needs removal later, it needs a separately authorized owner path; this credential can never delete.
 
-## Concrete eventual setup (NOT executed)
+## Setup procedure (completed under owner authorization)
 
 1. Review exact prepared source/tests/PR, selected private target binding and future deployment revision. Approve service-only deployment plus BOTH exact new grants and private delivery destinations explicitly. Policy target selection alone is not setup/write approval.
 2. Use guarded release from current b59db0a/MCP1.9.3 baseline after fresh drift/health/backup checks and green CI. Candidate package1.9.4. Preserve six peer services/Caddy/Compose/all existing identities. No source edits solely on production.
@@ -57,7 +57,7 @@ node scripts/provision-bounded-shopping.js read --status
 node scripts/provision-bounded-shopping.js add --status
 ```
 
-Registration is sole-owner/idempotent/conflict-refusing and never prints credentials. Box files `/data/.env.gina-bounded-shopping-read` and `/data/.env.gina-bounded-shopping-add`, mode0600. Both use fields ANYLIST_TOKEN_URL, ANYLIST_MCP_URL, GINA_BOUNDED_CLIENT_ID, GINA_BOUNDED_CLIENT_SECRET, ANYLIST_LIST_ID, ANYLIST_BINDING_SHA256. Same field names, distinct private files/identities. Proposed local private paths `~/.config/vector72/credentials/gina-bounded-shopping-read.env` and `gina-bounded-shopping-add.env`,0600 in0700 directory. New exact delivery approval as required; no reuse/export of GPT/canary credentials. Encrypted box-side backups before delivery, no values in logs/prompts/artifacts/git.
+Registration is sole-owner/idempotent/conflict-refusing and never prints credentials. Box files `/data/.env.gina-bounded-shopping-read` and `/data/.env.gina-bounded-shopping-add`, mode0600. Both use fields ANYLIST_TOKEN_URL, ANYLIST_MCP_URL, GINA_BOUNDED_CLIENT_ID, GINA_BOUNDED_CLIENT_SECRET, ANYLIST_LIST_ID, ANYLIST_BINDING_SHA256. Same field names, distinct private files/identities. Delivered local private paths `~/.config/vector72/credentials/gina-bounded-shopping-read.env` and `gina-bounded-shopping-add.env`,0600 in0700 directory. Direct delivery approval recorded; no reuse/export of GPT/canary credentials. Encrypted box-side backups before delivery, no values in logs/prompts/artifacts/git.
 
 5. Authenticate only through own client_credentials/token and /mcp initialize/tools-list. Live writer qualification sends NO tools/call or mutation permission probes. New reader then proves full selected-list state fits bounds, correct schema/identity/binding, timestamp and snapshot behavior. Freeze measured exact schema/source/identity/binding in Gina. Any actual add remains separately authorized by the eventual operational/action contract.
 
@@ -72,4 +72,4 @@ node scripts/provision-bounded-shopping.js read --revoke
 
 Removes only named role's tokens/codes/client row/private box file. Remove its approved delivered private file separately. Do not reuse a stale policy/secret after reprovision.
 
-Revoke BOTH new identities before baseline rollback; disable flags alone do not remove persistent identities. The prepared release driver recognizes exact reviewed b59db0a image label and preserves existing full/gina/canary-read/canary-write clients while refusing any new bounded profiles BEFORE restoration. Unknown older images retain the conservative existing guards. No old-driver/raw-Docker bypass. Existing readonly/writer canary credentials are never revoked for this preparation. No actual rollback or live guard probe has been run.
+Revoke BOTH new identities before baseline rollback; disable flags alone do not remove persistent identities. The release driver recognizes exact reviewed b59db0a image label and preserves existing full/gina/canary-read/canary-write clients while refusing any new bounded profiles BEFORE restoration. Unknown older images retain the conservative existing guards. No old-driver/raw-Docker bypass. Existing readonly/writer canary credentials are preserved. A live guard-only check with both new identities present refused before restoration; no actual rollback was run.
