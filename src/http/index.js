@@ -1,4 +1,5 @@
 import {BOUNDED_PROFILES} from '../profiles/bounded-policy.js';
+import {ESTATE_READ_PROFILE} from '../profiles/estate-meal-policy.js';
 import {CANARY_WRITE_PROFILE} from '../profiles/canary-write-policy.js';
 import {CANARY_PROFILE} from '../profiles/canary-policy.js';
 import {mountActions} from '../actions/router.js';
@@ -94,7 +95,7 @@ app.use((req, res, next) => {
       `${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms) ` +
       `session:${req.session?.id?.slice(0, 8) ?? "none"} ` +
       `user:${req.userId ?? req.session?.userId ?? "-"} ` +
-      `client:${[CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(req.clientProfile)?"canary-redacted":req.clientId?.slice(0, 8) ?? "-"} source:${req.actorSource ?? "-"}`,
+      `client:${[ESTATE_READ_PROFILE,CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(req.clientProfile)?"machine-redacted":req.clientId?.slice(0, 8) ?? "-"} source:${req.actorSource ?? "-"}`,
     );
   });
   next();
@@ -167,12 +168,12 @@ app.use(onboardingRouter);
 
 const mcpSessions = new Map(); // sessionId → { server, transport }
 
-function createMcpServer(userId, clientProfile = "full", actorSource = null) {
+function createMcpServer(userId, clientProfile = "full", actorSource = null, clientId = null) {
   const mcpServer = new McpServer({
     name: clientProfile === "gina" ? "anylist-mcp-gina" : "anylist-mcp-server",
     version: VERSION,
   });
-  registerAllTools(mcpServer, () => getOrCreateSession(userId), { profile: clientProfile, actorSource });
+  registerAllTools(mcpServer, () => getOrCreateSession(userId), { profile: clientProfile, actorSource, clientId, userId });
   return mcpServer;
 }
 
@@ -208,7 +209,7 @@ async function handleMcp(req, res) {
 
       // Create a new MCP session for this user
       const userId = req.userId;
-      const mcpServer = createMcpServer(userId, req.clientProfile, req.actorSource);
+      const mcpServer = createMcpServer(userId, req.clientProfile, req.actorSource, req.clientId);
 
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomBytes(16).toString("hex"),
@@ -251,7 +252,7 @@ function makeSseConnectHandler(postEndpoint) {
     try {
       const transport = new SSEServerTransport(postEndpoint, res);
       const sessionId = transport.sessionId;
-      const mcpServer = createMcpServer(req.userId, req.clientProfile, req.actorSource);
+      const mcpServer = createMcpServer(req.userId, req.clientProfile, req.actorSource, req.clientId);
       mcpSessions.set(sessionId, {
         server: mcpServer,
         transport,

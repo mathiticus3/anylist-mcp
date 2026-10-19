@@ -1,4 +1,6 @@
 import {BOUNDED_PROFILES} from '../profiles/bounded-policy.js';
+import {ESTATE_READ_PROFILE} from '../profiles/estate-meal-policy.js';
+import {registerEstateMealRead} from '../profiles/estate-meal-read.js';
 import {registerBoundedShopping} from '../profiles/bounded-shopping.js';
 import {CANARY_WRITE_PROFILE} from '../profiles/canary-write-policy.js';
 import {registerCanaryWriter} from '../profiles/canary-write-shopping.js';
@@ -23,6 +25,7 @@ import { register as registerRecipeCollections } from "./recipe-collections.js";
  * @param {{profile?: string}} options OAuth-client tool profile.
  */
 export function registerAllTools(server, getClient, options = {}) {
+  if(options.profile===ESTATE_READ_PROFILE){registerEstateMealRead(server,getClient,options);return;}
   if(options.profile===CANARY_PROFILE){registerCanaryShopping(server,getClient);return;}
   if(options.profile===CANARY_WRITE_PROFILE){registerCanaryWriter(server,getClient);return;}
   if(BOUNDED_PROFILES.includes(options.profile)){registerBoundedShopping(server,getClient,options);return;}
