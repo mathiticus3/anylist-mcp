@@ -71,7 +71,7 @@ class ProductionReleaseTests(unittest.TestCase):
 
     def test_release_spec_is_exactly_scoped_to_live_anylist(self):
         release = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
-        self.assertEqual(release["expected_baseline"]["commit"], "209b39c255fa979614926a0658cc2234bf1ec2a4")
+        self.assertEqual(release["expected_baseline"]["commit"], "3dd4147d2b1bdf729f629b05224878c50c471aff")
         self.assertIsNone(release["expected_baseline"]["branch"])
         self.assertEqual(release["production"]["source_directory"], "/home/deploy/web-caddy/anylist-upstream")
         self.assertEqual(release["production"]["volume_name"], "web-caddy_anylist-mcp-data")
@@ -81,6 +81,20 @@ class ProductionReleaseTests(unittest.TestCase):
             "profile", "source",
         ])
         self.assertEqual(release["candidate_schema"]["oauth_client_columns"][-2:], ["profile", "source"])
+
+    def test_estate_rollback_preserves_exact_existing_v2_clients_but_refuses_new_reader(self):
+        prod = {"volume_name": "test-volume"}
+        baseline = "3dd4147d2b1bdf729f629b05224878c50c471aff"
+        with patch.object(deploy_anylist, "run", side_effect=[baseline, '{"restrictedClients":0}']) as runner:
+            deploy_anylist.assert_legacy_rollback_profiles(prod, "v2-image")
+            code = runner.call_args.args[0][-1]
+            self.assertIn('"gina_bounded_read"', code)
+            self.assertIn('"gina_bounded_add"', code)
+            self.assertIn('"gina_canary_readonly"', code)
+            self.assertNotIn('"estate_hub_mealplan_readonly"', code)
+        with patch.object(deploy_anylist, "run", side_effect=[baseline, '{"restrictedClients":1}']):
+            with self.assertRaises(deploy_anylist.ReleaseError):
+                deploy_anylist.assert_legacy_rollback_profiles(prod, "v2-image")
 
     def test_exact_baseline_code_accepts_candidate_migrated_live_schema(self):
         release = json.loads(SPEC_PATH.read_text(encoding="utf-8"))

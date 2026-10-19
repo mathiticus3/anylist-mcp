@@ -794,6 +794,10 @@ def assert_legacy_rollback_profiles(prod: dict, rollback_image: str) -> None:
         # v2 bindings are incompatible with v1. Revoke both bounded identities
         # before rollback; preserve the independently owned older canaries.
         allowed.extend(["gina_canary_readonly", "gina_canary_write"])
+    elif target_commit == "3dd4147d2b1bdf729f629b05224878c50c471aff":
+        # Exact v2 bounded-shopping baseline. It does not know the new Estate
+        # meal reader: revoke that identity before restoring this image.
+        allowed.extend(["gina_canary_readonly", "gina_canary_write", "gina_bounded_read", "gina_bounded_add"])
     code = """const Database=require('better-sqlite3');
 const db=new Database('/data/anylist-mcp.db',{readonly:true});
 const allowed=ALLOWED_PROFILES;

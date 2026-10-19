@@ -10,6 +10,44 @@ import test from "node:test";
 import { OAuthClientInformationFullSchema } from "@modelcontextprotocol/sdk/shared/auth.js";
 import Database from "better-sqlite3";
 
+test('Estate meal reader HTTP grant stays held until enabled and denies writes, wide windows, callback rebinding and revoked sessions', {timeout:30000}, async t=>{
+ const dataDir=await mkdtemp(path.join(os.tmpdir(),'synthetic-estate-meal-http-'));
+ const port=await reservePort(),base=`http://127.0.0.1:${port}`,allowed=path.join(dataDir,'allowed.txt');
+ await writeFile(allowed,'fixture@example.invalid\n');
+ const env={...process.env,DATA_DIR:dataDir,ALLOWED_EMAILS_FILE:allowed,PORT:String(port),BASE_URL:base,SERVER_SECRET_KEY:'0'.repeat(64),SESSION_SECRET:'synthetic'};
+ const output=[],child=spawn(process.execPath,['src/http/index.js'],{cwd:path.resolve(import.meta.dirname,'..'),env,stdio:['ignore','pipe','pipe']});
+ child.stdout.on('data',x=>output.push(x.toString()));child.stderr.on('data',x=>output.push(x.toString()));
+ t.after(async()=>{await stopServer(child);await rm(dataDir,{recursive:true,force:true});});await waitForServer(base,child,output);
+ const db=new Database(path.join(dataDir,'anylist-mcp.db'));t.after(()=>db.close());
+ const user='00000000-0000-4000-8000-000000000002';
+ db.prepare('INSERT INTO users(id,email)VALUES(?,?)').run(user,'fixture@example.invalid');
+ db.prepare('INSERT INTO anylist_credentials(user_id,encrypted_user,encrypted_pass)VALUES(?,?,?)').run(user,'unused-test-only','unused-test-only');
+ const {execFile}=await import('node:child_process'),{promisify}=await import('node:util'),{readFile}=await import('node:fs/promises');const exec=promisify(execFile);
+ const provision=(...args)=>exec(process.execPath,['scripts/provision-estate-hub-read.js',...args],{cwd:path.resolve(import.meta.dirname,'..'),env});
+ const created=JSON.parse((await provision('--provision','--user-id',user)).stdout);
+ const privateValue=JSON.parse(await readFile(path.join(dataDir,'estate-household-anylist-read.private.json'),'utf8'));
+ const tokenRequest=()=>fetch(base+'/oauth/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'client_credentials',client_id:created.clientId,client_secret:privateValue.client_secret})});
+ assert.equal((await tokenRequest()).status,401);
+ await provision('--enable','--client-id',created.clientId);
+ const issued=await tokenRequest();assert.equal(issued.status,200);const token=await issued.json();
+ assert.equal(token.scope,'mcp');assert.equal(token.refresh_token,undefined);
+ let session,sequence=1;
+ const request=(method,params)=>fetch(base+'/mcp',{method:'POST',headers:{Authorization:'Bearer '+token.access_token,Accept:'application/json, text/event-stream','Content-Type':'application/json',...(session?{'Mcp-Session-Id':session}:{})},body:JSON.stringify({jsonrpc:'2.0',id:sequence++,method,params})});
+ const rpc=async(method,params)=>{const r=await request(method,params);assert.equal(r.status,200);session=r.headers.get('mcp-session-id')||session;const text=await r.text();return r.headers.get('content-type').includes('text/event-stream')?JSON.parse(text.split('\n').filter(l=>l.startsWith('data:')).at(-1).slice(5)):JSON.parse(text);};
+ await rpc('initialize',{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'synthetic-reader',version:'1'}});
+ const inventory=await rpc('tools/list',{});assert.deepEqual(inventory.result.tools.map(x=>x.name),['meal_plan_read']);
+ assert.equal(inventory.result.tools[0].annotations.readOnlyHint,true);
+ for(const args of [{action:'create_event',date:'2026-01-01',title:'synthetic denied'},
+   {action:'list_events',start_date:'2026-01-01',end_date:'2026-02-01'}]){
+  const denied=await rpc('tools/call',{name:'meal_plan_read',arguments:args});assert.ok(denied.error||denied.result?.isError);
+ }
+ const browser=await fetch(base+'/oauth/authorize?'+new URLSearchParams({client_id:created.clientId,redirect_uri:'https://claude.ai/api/mcp/auth_callback',response_type:'code'}),{redirect:'manual'});
+ assert.equal(browser.status,403);
+ await provision('--disable','--client-id',created.clientId);
+ assert.equal((await request('tools/list',{})).status,401);assert.equal((await tokenRequest()).status,401);
+ assert.ok(!output.join('').includes(privateValue.client_secret));
+});
+
 async function reservePort() {
   const server = net.createServer();
   await new Promise((resolve, reject) => {
