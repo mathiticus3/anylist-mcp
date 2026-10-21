@@ -54,7 +54,8 @@ class AnyListClient {
    *   Optional credentials. Falls back to ANYLIST_USERNAME / ANYLIST_PASSWORD / ANYLIST_LIST_NAME
    *   environment variables when not provided (stdio mode).
    */
-  constructor({ username, password, defaultListName } = {}) {
+  constructor({ username, password, defaultListName, snapshotOnly=false } = {}) {
+    this._snapshotOnly = snapshotOnly;
     this.client = null;
     this.targetList = null;
     this._username = username || null;
@@ -74,7 +75,8 @@ class AnyListClient {
    *
    * @returns {Promise<AnyList>} the authenticated client
    */
-  async ensureAuthenticated() {
+  async ensureAuthenticated({safeDiagnostics=false} = {}) {
+    safeDiagnostics = this._snapshotOnly || safeDiagnostics;
     if (this.client) return this.client;
 
     const username = this._username || process.env.ANYLIST_USERNAME;
@@ -90,8 +92,8 @@ class AnyListClient {
       const client = new AnyList({ email: username, password, credentialsFile: null });
       client.authClient = client.authClient.extend({timeout:{request:15000},retry:{limit:0}});
       client.client.defaults.options.timeout = {request:15000};
-      console.error(`Connecting to AnyList as ${username}...`);
-      await client.login();
+      console.error(safeDiagnostics ? 'Connecting to AnyList' : `Connecting to AnyList as ${username}...`);
+      await client.login(!safeDiagnostics);
       console.error('Successfully authenticated with AnyList');
       await client.getLists();
       // Assign only after a fully successful handshake, so a failed attempt
@@ -99,7 +101,7 @@ class AnyListClient {
       this.client = client;
       return this.client;
     } catch (error) {
-      const wrappedError = new Error(`Failed to connect to AnyList: ${error.message}`);
+      const wrappedError = new Error(safeDiagnostics ? 'Failed to connect to AnyList' : `Failed to connect to AnyList: ${error.message}`);
       wrappedError.status = error?.response?.statusCode;
       console.error(wrappedError.message);
       throw wrappedError;
