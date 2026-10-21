@@ -48,6 +48,45 @@ test('Estate meal reader HTTP grant stays held until enabled and denies writes, 
  assert.ok(!output.join('').includes(privateValue.client_secret));
 });
 
+test('Household shopping/recipe machine profiles enforce policy at token and existing-session boundaries', {timeout:30000}, async t=>{
+ const dataDir=await mkdtemp(path.join(os.tmpdir(),'synthetic-household-http-'));
+ const port=await reservePort(),base=`http://127.0.0.1:${port}`,allowed=path.join(dataDir,'allowed.txt');
+ await writeFile(allowed,'fixture@example.invalid\n');
+ const env={...process.env,DATA_DIR:dataDir,ALLOWED_EMAILS_FILE:allowed,PORT:String(port),BASE_URL:base,SERVER_SECRET_KEY:'0'.repeat(64),SESSION_SECRET:'synthetic'};
+ const output=[],child=spawn(process.execPath,['src/http/index.js'],{cwd:path.resolve(import.meta.dirname,'..'),env,stdio:['ignore','pipe','pipe']});
+ child.stdout.on('data',x=>output.push(x.toString()));child.stderr.on('data',x=>output.push(x.toString()));
+ t.after(async()=>{await stopServer(child);await rm(dataDir,{recursive:true,force:true});});await waitForServer(base,child,output);
+ const db=new Database(path.join(dataDir,'anylist-mcp.db'));t.after(()=>db.close());
+ const user='00000000-0000-4000-8000-000000000002';db.prepare('INSERT INTO users(id,email)VALUES(?,?)').run(user,'fixture@example.invalid');
+ const bcrypt=(await import('bcrypt')).default,secret='synthetic-machine-secret-not-production',hash=await bcrypt.hash(secret,4);
+ const entries=[['shopping','00000000-0000-4000-8000-000000000003','shopping_read'],['recipes','00000000-0000-4000-8000-000000000004','recipes_read']];
+ for(const [kind,id,tool] of entries){
+  db.prepare('INSERT INTO oauth_clients(client_id,client_secret_hash,user_id,client_name,profile,source)VALUES(?,?,?,?,?,?)').run(id,hash,user,'fixture-'+kind,`estate_hub_${kind}_readonly`,`estate-household-${kind}-readonly`);
+  const policy={schemaVersion:1,clientId:id,userId:user,enabled:false,revision:1,...(kind==='shopping'?{listId:'a'.repeat(32)}:{})};
+  const save=()=>writeFile(path.join(dataDir,`estate-hub-${kind}-read-policy.json`),JSON.stringify(policy),{mode:0o600});await save();
+  const requestToken=()=>fetch(base+'/oauth/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'client_credentials',client_id:id,client_secret:secret})});
+  assert.equal((await requestToken()).status,401);policy.enabled=true;await save();
+  db.prepare('UPDATE oauth_clients SET redirect_uri=? WHERE client_id=?').run('https://cdlms.tail767e55.ts.net:8443/oauth/clients/mcp:anylist/callback',id);
+  assert.equal((await requestToken()).status,401);
+  db.prepare('UPDATE oauth_clients SET redirect_uri=NULL WHERE client_id=?').run(id);
+  const issued=await requestToken();assert.equal(issued.status,200);const token=await issued.json();assert.equal(token.refresh_token,undefined);
+  let session,sequence=1;
+  const request=(method,params)=>fetch(base+'/mcp',{method:'POST',headers:{Authorization:'Bearer '+token.access_token,Accept:'application/json, text/event-stream','Content-Type':'application/json',...(session?{'Mcp-Session-Id':session}:{})},body:JSON.stringify({jsonrpc:'2.0',id:sequence++,method,params})});
+  const rpc=async(method,params)=>{const r=await request(method,params);assert.equal(r.status,200);session=r.headers.get('mcp-session-id')||session;const text=await r.text();return r.headers.get('content-type').includes('text/event-stream')?JSON.parse(text.split('\n').filter(l=>l.startsWith('data:')).at(-1).slice(5)):JSON.parse(text);};
+  await rpc('initialize',{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'synthetic-reader',version:'1'}});
+  assert.deepEqual((await rpc('tools/list',{})).result.tools.map(x=>x.name),[tool]);
+  db.prepare('UPDATE oauth_clients SET redirect_uri=? WHERE client_id=?').run('https://cdlms.tail767e55.ts.net:8443/oauth/clients/mcp:anylist/callback',id);
+  assert.equal((await request('tools/list',{})).status,401);
+  db.prepare('UPDATE oauth_clients SET redirect_uri=NULL WHERE client_id=?').run(id);
+  for(const name of ['shopping','recipes','meal_plan_read']){const denied=await rpc('tools/call',{name,arguments:{action:'create',name:'denied'}});assert.ok(denied.error||denied.result?.isError);}
+  const bad=await rpc('tools/call',{name:tool,arguments:{action:'create',name:'denied'}});assert.ok(bad.error||bad.result?.isError);
+  const browser=await fetch(base+'/oauth/authorize?'+new URLSearchParams({client_id:id,redirect_uri:'https://claude.ai/api/mcp/auth_callback',response_type:'code'}),{redirect:'manual'});assert.equal(browser.status,403);
+  assert.equal((await fetch(base+'/actions/getServiceStatus',{method:'POST',headers:{Authorization:'Bearer '+token.access_token,'Content-Type':'application/json'},body:'{}'})).status,401);
+  policy.enabled=false;await save();assert.equal((await request('tools/list',{})).status,401);assert.equal((await requestToken()).status,401);
+ }
+ assert.ok(!output.join('').includes(secret));
+});
+
 async function reservePort() {
   const server = net.createServer();
   await new Promise((resolve, reject) => {

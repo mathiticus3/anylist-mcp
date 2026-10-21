@@ -1,3 +1,5 @@
+import {HOUSEHOLD_READ_PROFILES} from '../profiles/estate-household-policy.js';
+import {registerHouseholdReads} from '../profiles/estate-household-reads.js';
 import {BOUNDED_PROFILES} from '../profiles/bounded-policy.js';
 import {ESTATE_READ_PROFILE} from '../profiles/estate-meal-policy.js';
 import {registerEstateMealRead} from '../profiles/estate-meal-read.js';
@@ -25,6 +27,7 @@ import { register as registerRecipeCollections } from "./recipe-collections.js";
  * @param {{profile?: string}} options OAuth-client tool profile.
  */
 export function registerAllTools(server, getClient, options = {}) {
+  if(HOUSEHOLD_READ_PROFILES.includes(options.profile)){registerHouseholdReads(server,getClient,options);return;}
   if(options.profile===ESTATE_READ_PROFILE){registerEstateMealRead(server,getClient,options);return;}
   if(options.profile===CANARY_PROFILE){registerCanaryShopping(server,getClient);return;}
   if(options.profile===CANARY_WRITE_PROFILE){registerCanaryWriter(server,getClient);return;}

@@ -1,3 +1,4 @@
+import {HOUSEHOLD_READ_PROFILES} from '../profiles/estate-household-policy.js';
 import {BOUNDED_PROFILES} from '../profiles/bounded-policy.js';
 import {ESTATE_READ_PROFILE} from '../profiles/estate-meal-policy.js';
 import {CANARY_WRITE_PROFILE} from '../profiles/canary-write-policy.js';
@@ -95,7 +96,7 @@ app.use((req, res, next) => {
       `${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms) ` +
       `session:${req.session?.id?.slice(0, 8) ?? "none"} ` +
       `user:${req.userId ?? req.session?.userId ?? "-"} ` +
-      `client:${[ESTATE_READ_PROFILE,CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(req.clientProfile)?"machine-redacted":req.clientId?.slice(0, 8) ?? "-"} source:${req.actorSource ?? "-"}`,
+      `client:${[...HOUSEHOLD_READ_PROFILES,ESTATE_READ_PROFILE,CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(req.clientProfile)?"machine-redacted":req.clientId?.slice(0, 8) ?? "-"} source:${req.actorSource ?? "-"}`,
     );
   });
   next();
@@ -173,7 +174,7 @@ function createMcpServer(userId, clientProfile = "full", actorSource = null, cli
     name: clientProfile === "gina" ? "anylist-mcp-gina" : "anylist-mcp-server",
     version: VERSION,
   });
-  registerAllTools(mcpServer, () => getOrCreateSession(userId), { profile: clientProfile, actorSource, clientId, userId });
+  registerAllTools(mcpServer, () => getOrCreateSession(userId,{snapshotOnly:HOUSEHOLD_READ_PROFILES.includes(clientProfile)}), { profile: clientProfile, actorSource, clientId, userId });
   return mcpServer;
 }
 
