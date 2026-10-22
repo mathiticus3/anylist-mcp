@@ -54,8 +54,9 @@ class AnyListClient {
    *   Optional credentials. Falls back to ANYLIST_USERNAME / ANYLIST_PASSWORD / ANYLIST_LIST_NAME
    *   environment variables when not provided (stdio mode).
    */
-  constructor({ username, password, defaultListName, snapshotOnly=false } = {}) {
-    this._snapshotOnly = snapshotOnly;
+  constructor({ username, password, defaultListName, snapshotOnly=false, oneShotWrites=false } = {}) {
+    this._snapshotOnly = snapshotOnly || oneShotWrites;
+    this._oneShotWrites = oneShotWrites;
     this.client = null;
     this.targetList = null;
     this._username = username || null;
@@ -92,10 +93,15 @@ class AnyListClient {
       const client = new AnyList({ email: username, password, credentialsFile: null });
       client.authClient = client.authClient.extend({timeout:{request:15000},retry:{limit:0}});
       client.client.defaults.options.timeout = {request:15000};
+      if (this._oneShotWrites) {
+        client.client.defaults.options.retry = {limit: 0};
+        client.client.defaults.options.hooks.afterResponse = [];
+        client.client.defaults.options.followRedirect = false;
+      }
       console.error(safeDiagnostics ? 'Connecting to AnyList' : `Connecting to AnyList as ${username}...`);
       await client.login(!safeDiagnostics);
       console.error('Successfully authenticated with AnyList');
-      await client.getLists();
+      if (!this._oneShotWrites) await client.getLists();
       // Assign only after a fully successful handshake, so a failed attempt
       // leaves this.client null and the next call retries from scratch.
       this.client = client;
@@ -106,6 +112,19 @@ class AnyListClient {
       console.error(wrappedError.message);
       throw wrappedError;
     }
+  }
+
+  async refreshWriteAuthentication() {
+    if (!this._oneShotWrites) throw new Error('Dedicated write authentication is required.');
+    const client = await this.ensureAuthenticated({safeDiagnostics: true});
+    await client._refreshTokens();
+    try {
+      const parts = client.accessToken.split('.');
+      const subject = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')).sub;
+      if (typeof subject !== 'string' || !subject) throw new Error();
+      client.uid = subject;
+    } catch { throw new Error('Source account identity is unavailable.'); }
+    return client;
   }
 
   /**

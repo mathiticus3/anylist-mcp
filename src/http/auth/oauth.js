@@ -1,3 +1,4 @@
+import { HOUSEHOLD_WRITE_PROFILES, assertWriteScope } from '../../profiles/estate-write-policy.js';
 import {HOUSEHOLD_READ_PROFILES,assertReadScope} from '../../profiles/estate-household-policy.js';
 import {BOUNDED_PROFILES,assertBoundedScope} from '../../profiles/bounded-policy.js';
 import {ESTATE_READ_PROFILE,assertEstateScope} from '../../profiles/estate-meal-policy.js';
@@ -328,6 +329,10 @@ async function handleClientCredentialsGrant(req, res) {
     console.log(`[oauth] client_credentials secret mismatch: client_id=${client_id.slice(0, 8)}…`);
     return res.status(401).json({ error: "invalid_client" });
   }
+  if (HOUSEHOLD_WRITE_PROFILES.includes(client.profile)) {
+    try { if (client.redirect_uri) throw Error(); assertWriteScope(client.profile, client.client_id, client.user_id, client.source); }
+    catch { return res.status(401).json({error: 'household_write_policy_unavailable'}); }
+  }
   if(HOUSEHOLD_READ_PROFILES.includes(client.profile)){
     try{if(client.redirect_uri)throw Error();assertReadScope(client.profile,client.client_id,client.user_id,client.source);}
     catch{return res.status(401).json({error:'household_read_policy_unavailable'});}
@@ -347,7 +352,7 @@ async function handleClientCredentialsGrant(req, res) {
     scope: "mcp",
   });
 
-  console.log([...HOUSEHOLD_READ_PROFILES,ESTATE_READ_PROFILE,CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(client.profile) ? "[oauth] client_credentials issued for dedicated machine profile" : `[oauth] client_credentials token issued for client_id=${client_id.slice(0, 8)}… user_id=${client.user_id}`);
+  console.log([...HOUSEHOLD_WRITE_PROFILES,...HOUSEHOLD_READ_PROFILES,ESTATE_READ_PROFILE,CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(client.profile) ? "[oauth] client_credentials issued for dedicated machine profile" : `[oauth] client_credentials token issued for client_id=${client_id.slice(0, 8)}… user_id=${client.user_id}`);
   res.json({
     access_token: accessToken,
     token_type: "Bearer",
@@ -507,7 +512,11 @@ export function requireBearerToken(req, res, next) {
     res.setHeader("WWW-Authenticate", `Bearer realm="${baseUrl(req)}", error="invalid_token"`);
     return res.status(401).json({ error: "invalid_token" });
   }
-  if(!["full","gina",...HOUSEHOLD_READ_PROFILES,ESTATE_READ_PROFILE,CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(client.profile||"full"))return res.status(401).json({error:"invalid_client_profile"});
+  if(!["full","gina",...HOUSEHOLD_WRITE_PROFILES,...HOUSEHOLD_READ_PROFILES,ESTATE_READ_PROFILE,CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(client.profile||"full"))return res.status(401).json({error:"invalid_client_profile"});
+  if (HOUSEHOLD_WRITE_PROFILES.includes(client.profile)) {
+    try { if (client.redirect_uri || client.user_id !== record.user_id) throw Error(); assertWriteScope(client.profile, client.client_id, record.user_id, client.source); }
+    catch { return res.status(401).json({error: 'household_write_policy_unavailable'}); }
+  }
   if(HOUSEHOLD_READ_PROFILES.includes(client.profile)){
     try{if(client.redirect_uri)throw Error();assertReadScope(client.profile,client.client_id,record.user_id,client.source);}
     catch{return res.status(401).json({error:'household_read_policy_unavailable'});}

@@ -438,3 +438,79 @@ test('separate fixed-policy read/add grants pin source digest and preserve canar
  assert.deepEqual(db.prepare('SELECT * FROM oauth_clients ORDER BY client_name').all(),canaries);
  for(const token of Object.values(tokens))assert.equal((await fetch(base+'/mcp',{headers:{Authorization:'Bearer '+token}})).status,401);
 });
+
+test('dedicated household writers remain separate and revocable across token and MCP sessions', { timeout: 30000 }, async t => {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), 'synthetic-household-writer-http-'));
+  const port = await reservePort(), base = `http://127.0.0.1:${port}`, allowed = path.join(dataDir, 'allowed.txt');
+  await writeFile(allowed, 'fixture@example.invalid\n');
+  const env = { ...process.env, DATA_DIR: dataDir, ALLOWED_EMAILS_FILE: allowed, PORT: String(port), BASE_URL: base,
+    SERVER_SECRET_KEY: '0'.repeat(64), SESSION_SECRET: 'synthetic' };
+  const output = [], child = spawn(process.execPath, ['src/http/index.js'], { cwd: path.resolve(import.meta.dirname, '..'), env, stdio: ['ignore', 'pipe', 'pipe'] });
+  child.stdout.on('data', value => output.push(value.toString())); child.stderr.on('data', value => output.push(value.toString()));
+  t.after(async () => { await stopServer(child); await rm(dataDir, { recursive: true, force: true }); });
+  await waitForServer(base, child, output);
+  const db = new Database(path.join(dataDir, 'anylist-mcp.db')); t.after(() => db.close());
+  const user = '00000000-0000-4000-8000-000000000002', otherUser = '00000000-0000-4000-8000-000000000009';
+  db.prepare('INSERT INTO users(id,email) VALUES (?,?)').run(user, 'fixture@example.invalid');
+  db.prepare('INSERT INTO users(id,email) VALUES (?,?)').run(otherUser, 'other@example.invalid');
+  const bcrypt = (await import('bcrypt')).default, secret = 'synthetic-writer-secret-not-production', hash = await bcrypt.hash(secret, 4);
+  const entries = [['shopping', '00000000-0000-4000-8000-000000000005', 'shopping_write'], ['meal', '00000000-0000-4000-8000-000000000006', 'meal_plan_write']];
+  for (const [kind, id, tool] of entries) {
+    const profile = kind === 'meal' ? 'estate_hub_mealplan_writer' : 'estate_hub_shopping_writer';
+    const source = kind === 'meal' ? 'estate-household-mealplan-writer' : 'estate-household-shopping-writer';
+    db.prepare('INSERT INTO oauth_clients(client_id,client_secret_hash,user_id,client_name,profile,source) VALUES (?,?,?,?,?,?)')
+      .run(id, hash, user, 'fixture-' + kind, profile, source);
+    const policy = { schemaVersion: 1, clientId: id, userId: user, upstreamUserId: 'synthetic-upstream-user',
+      journalId: '00000000-0000-4000-8000-000000000007', enabled: false, revision: 1,
+      operations: [kind === 'shopping' ? 'shopping.add' : 'meal.create'],
+      ...(kind === 'shopping' ? { listId: 'a'.repeat(32) } : { timeZone: 'America/Denver', maxPastDays: 7, maxFutureDays: 93, labelIds: [] }) };
+    const save = () => writeFile(path.join(dataDir, `estate-hub-${kind === 'meal' ? 'mealplan' : 'shopping'}-write-policy.json`), JSON.stringify(policy), { mode: 0o600 });
+    await save();
+    const requestToken = () => fetch(base + '/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'client_credentials', client_id: id, client_secret: secret }) });
+    assert.equal((await requestToken()).status, 401); policy.enabled = true; await save();
+    const issued = await requestToken(); assert.equal(issued.status, 200); const token = await issued.json(); assert.equal(token.refresh_token, undefined);
+    let session, sequence = 1;
+    const request = (method, params) => fetch(base + '/mcp', { method: 'POST', headers: { Authorization: 'Bearer ' + token.access_token,
+      Accept: 'application/json, text/event-stream', 'Content-Type': 'application/json', ...(session ? { 'Mcp-Session-Id': session } : {}) },
+      body: JSON.stringify({ jsonrpc: '2.0', id: sequence++, method, params }) });
+    const rpc = async (method, params) => { const response = await request(method, params); assert.equal(response.status, 200);
+      session = response.headers.get('mcp-session-id') || session; const text = await response.text();
+      return response.headers.get('content-type').includes('text/event-stream') ? JSON.parse(text.split('\n').filter(line => line.startsWith('data:')).at(-1).slice(5)) : JSON.parse(text); };
+    await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'synthetic-writer', version: '1' } });
+    assert.deepEqual((await rpc('tools/list', {})).result.tools.map(value => value.name), [tool]);
+    for (const name of ['shopping', 'meal_plan', 'recipes', kind === 'shopping' ? 'meal_plan_write' : 'shopping_write']) {
+      const denied = await rpc('tools/call', { name, arguments: { action: 'create' } }); assert.ok(denied.error || denied.result?.isError);
+    }
+    // A native receipt proves the SDK carries THIS request's headers into the
+    // tool handler. No upstream client or business effect is involved.
+    const { mkdir } = await import('node:fs/promises');
+    const { initializeJournal, openJournal } = await import('../src/profiles/estate-write-journal.js');
+    const { digest, WRITE_CONTRACT } = await import('../src/profiles/estate-write-policy.js');
+    await mkdir(path.join(dataDir,'estate-write-journals'),{mode:0o700,recursive:true});
+    const journalPath=path.join(dataDir,'estate-write-journals',kind+'.sqlite3');
+    initializeJournal(journalPath,policy.journalId);
+    const journal=openJournal(journalPath,policy.journalId), changeId='00000000-0000-4000-8000-000000000008';
+    const command={action:'apply',operation:policy.operations[0],fields:{},change_id:changeId,expected_digest:'0'.repeat(64)};
+    journal.reserve({clientId:id,changeId,policyDigest:digest({contract:WRITE_CONTRACT,profile,source,...policy}),commandHash:digest(command),domain:kind,command});
+    journal.close();
+    const receipt=await rpc('tools/call',{name:tool,arguments:{action:'receipt',change_id:changeId}});
+    assert.equal(receipt.result.structuredContent.outcome,'PREPARED');
+    assert.equal(receipt.result.isError,undefined);
+    const browser = await fetch(base + '/oauth/authorize?' + new URLSearchParams({ client_id: id,
+      redirect_uri: 'https://claude.ai/api/mcp/auth_callback', response_type: 'code' }), { redirect: 'manual' }); assert.equal(browser.status, 403);
+    const writerSession = session;
+    db.prepare('UPDATE oauth_clients SET profile = ?, source = ? WHERE client_id = ?').run('full', 'oauth', id);
+    session = undefined;
+    await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'synthetic-general', version: '1' } });
+    assert.ok((await rpc('tools/list', {})).result.tools.some(value => value.name === 'shopping'));
+    db.prepare('UPDATE oauth_clients SET profile = ?, source = ? WHERE client_id = ?').run(profile, source, id);
+    assert.equal((await request('tools/list', {})).status, 403);
+    session = writerSession;
+    db.prepare('UPDATE oauth_clients SET user_id = ? WHERE client_id = ?').run(otherUser, id);
+    assert.equal((await request('tools/list', {})).status, 401);
+    db.prepare('UPDATE oauth_clients SET user_id = ? WHERE client_id = ?').run(user, id);
+    policy.enabled = false; await save(); assert.equal((await request('tools/list', {})).status, 401); assert.equal((await requestToken()).status, 401);
+  }
+  assert.ok(!output.join('').includes(secret));
+});
