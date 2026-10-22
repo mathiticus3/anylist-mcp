@@ -1,3 +1,4 @@
+import { HOUSEHOLD_WRITE_PROFILES } from '../profiles/estate-write-policy.js';
 import {HOUSEHOLD_READ_PROFILES} from '../profiles/estate-household-policy.js';
 import {BOUNDED_PROFILES} from '../profiles/bounded-policy.js';
 import {ESTATE_READ_PROFILE} from '../profiles/estate-meal-policy.js';
@@ -21,6 +22,7 @@ import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 
 import { getDb, loadAllowedEmails, deleteExpiredTokens } from "./db.js";
 import { getOrCreateSession } from "./session-manager.js";
+import { assertCurrentWriteRequest } from './auth/write-authority.js';
 import oauthRouter, { requireBearerToken } from "./auth/oauth.js";
 import { getAllowedRedirectUris, readPositiveInt } from "./auth/policy.js";
 import onboardingRouter from "./onboarding.js";
@@ -96,7 +98,7 @@ app.use((req, res, next) => {
       `${req.method} ${req.path} → ${res.statusCode} (${Date.now() - start}ms) ` +
       `session:${req.session?.id?.slice(0, 8) ?? "none"} ` +
       `user:${req.userId ?? req.session?.userId ?? "-"} ` +
-      `client:${[...HOUSEHOLD_READ_PROFILES,ESTATE_READ_PROFILE,CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(req.clientProfile)?"machine-redacted":req.clientId?.slice(0, 8) ?? "-"} source:${req.actorSource ?? "-"}`,
+      `client:${[...HOUSEHOLD_WRITE_PROFILES,...HOUSEHOLD_READ_PROFILES,ESTATE_READ_PROFILE,CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(req.clientProfile)?"machine-redacted":req.clientId?.slice(0, 8) ?? "-"} source:${req.actorSource ?? "-"}`,
     );
   });
   next();
@@ -174,7 +176,7 @@ function createMcpServer(userId, clientProfile = "full", actorSource = null, cli
     name: clientProfile === "gina" ? "anylist-mcp-gina" : "anylist-mcp-server",
     version: VERSION,
   });
-  registerAllTools(mcpServer, () => getOrCreateSession(userId,{snapshotOnly:HOUSEHOLD_READ_PROFILES.includes(clientProfile)}), { profile: clientProfile, actorSource, clientId, userId });
+  registerAllTools(mcpServer, () => getOrCreateSession(userId,{snapshotOnly:HOUSEHOLD_READ_PROFILES.includes(clientProfile),oneShotWrites:HOUSEHOLD_WRITE_PROFILES.includes(clientProfile)}), { profile: clientProfile, actorSource, clientId, userId, currentAuthorization: assertCurrentWriteRequest });
   return mcpServer;
 }
 
@@ -191,7 +193,9 @@ async function handleMcp(req, res) {
 
     if (mcpSession && (
       mcpSession.userId !== req.userId ||
-      mcpSession.clientId !== req.clientId
+      mcpSession.clientId !== req.clientId ||
+      mcpSession.clientProfile !== req.clientProfile ||
+      mcpSession.actorSource !== req.actorSource
     )) {
       return res.status(403).json({ error: "MCP session belongs to a different OAuth client." });
     }
@@ -220,6 +224,8 @@ async function handleMcp(req, res) {
             transport,
             userId: req.userId,
             clientId: req.clientId,
+            clientProfile: req.clientProfile,
+            actorSource: req.actorSource,
           });
         },
       });
@@ -259,6 +265,8 @@ function makeSseConnectHandler(postEndpoint) {
         transport,
         userId: req.userId,
         clientId: req.clientId,
+        clientProfile: req.clientProfile,
+        actorSource: req.actorSource,
       });
       transport.onclose = () => { mcpSessions.delete(sessionId); };
       await mcpServer.connect(transport); // connect() calls transport.start() internally
@@ -275,7 +283,8 @@ async function handleSseMessage(req, res) {
     if (!mcpSession || !(mcpSession.transport instanceof SSEServerTransport)) {
       return res.status(404).json({ error: "SSE session not found." });
     }
-    if (mcpSession.userId !== req.userId || mcpSession.clientId !== req.clientId) {
+    if (mcpSession.userId !== req.userId || mcpSession.clientId !== req.clientId
+      || mcpSession.clientProfile !== req.clientProfile || mcpSession.actorSource !== req.actorSource) {
       return res.status(403).json({ error: "MCP session belongs to a different OAuth client." });
     }
     await mcpSession.transport.handlePostMessage(req, res, req.body);

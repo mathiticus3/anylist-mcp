@@ -798,6 +798,14 @@ def assert_legacy_rollback_profiles(prod: dict, rollback_image: str) -> None:
         # Exact v2 bounded-shopping baseline. It does not know the new Estate
         # meal reader: revoke that identity before restoring this image.
         allowed.extend(["gina_canary_readonly", "gina_canary_write", "gina_bounded_read", "gina_bounded_add"])
+    elif target_commit in {"b570d9354616cc04aa1c822ec73e3b86086cccf8", "c3c099eb806e1171b7616cc8332cd771a798d324"}:
+        # Reviewed deployed meal-reader lineage and the separate household-read
+        # release preserve these exact restricted profiles. New writer clients
+        # must still be revoked/removed before restoring either older image.
+        allowed.extend(["gina_canary_readonly", "gina_canary_write", "gina_bounded_read", "gina_bounded_add",
+                        "estate_hub_mealplan_readonly"])
+        if target_commit == "c3c099eb806e1171b7616cc8332cd771a798d324":
+            allowed.extend(["estate_hub_shopping_readonly", "estate_hub_recipes_readonly"])
     code = """const Database=require('better-sqlite3');
 const db=new Database('/data/anylist-mcp.db',{readonly:true});
 const allowed=ALLOWED_PROFILES;

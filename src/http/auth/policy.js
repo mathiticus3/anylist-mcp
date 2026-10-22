@@ -1,3 +1,4 @@
+import { HOUSEHOLD_WRITE_PROFILES } from '../../profiles/estate-write-policy.js';
 import {HOUSEHOLD_READ_PROFILES} from '../../profiles/estate-household-policy.js';
 import {BOUNDED_PROFILES} from '../../profiles/bounded-policy.js';
 import {ESTATE_READ_PROFILE} from '../../profiles/estate-meal-policy.js';
@@ -131,7 +132,7 @@ export function validateClientRedirectUri(client, redirectUri, allowedRedirectUr
   if (!client) {
     throw new OAuthPolicyError("invalid_client", "Unknown OAuth client.", 401);
   }
-  if([...HOUSEHOLD_READ_PROFILES,ESTATE_READ_PROFILE,CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(client.profile))throw new OAuthPolicyError("unauthorized_client", "This dedicated machine client supports client_credentials only.", 403);
+  if([...HOUSEHOLD_WRITE_PROFILES,...HOUSEHOLD_READ_PROFILES,ESTATE_READ_PROFILE,CANARY_PROFILE,CANARY_WRITE_PROFILE,...BOUNDED_PROFILES].includes(client.profile))throw new OAuthPolicyError("unauthorized_client", "This dedicated machine client supports client_credentials only.", 403);
   validateRedirectUriSyntax(redirectUri);
 
   if (client.redirect_uri) {

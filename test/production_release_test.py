@@ -24,6 +24,20 @@ build_spec.loader.exec_module(build_release)
 
 
 class ProductionReleaseTests(unittest.TestCase):
+    def test_write_release_rollback_preserves_known_read_profiles_but_refuses_writers(self):
+        prod = {"volume_name": "test-volume"}
+        for baseline in ("b570d9354616cc04aa1c822ec73e3b86086cccf8", "c3c099eb806e1171b7616cc8332cd771a798d324"):
+            with patch.object(deploy_anylist, "run", side_effect=[baseline, '{"restrictedClients":0}']) as run:
+                deploy_anylist.assert_legacy_rollback_profiles(prod, "read-image")
+                code = run.call_args.args[0][-1]
+                self.assertIn('"estate_hub_mealplan_readonly"', code)
+                self.assertNotIn('"estate_hub_shopping_writer"', code)
+                self.assertNotIn('"estate_hub_mealplan_writer"', code)
+                self.assertEqual('"estate_hub_shopping_readonly"' in code, baseline.startswith("c3c099"))
+            with patch.object(deploy_anylist, "run", side_effect=[baseline, '{"restrictedClients":1}']):
+                with self.assertRaises(deploy_anylist.ReleaseError):
+                    deploy_anylist.assert_legacy_rollback_profiles(prod, "read-image")
+
     def test_legacy_rollback_refuses_new_restricted_profile_before_restoring(self):
         prod = {"volume_name": "test-volume"}
         with patch.object(deploy_anylist, "run", side_effect=['old-unreviewed', '{"restrictedClients":1}']):

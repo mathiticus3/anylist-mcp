@@ -15,9 +15,9 @@ const sessions = new Map();
  * @param {string} userId
  * @returns {Promise<AnyListClient>}
  */
-export async function getOrCreateSession(userId, {snapshotOnly=false} = {}) {
+export async function getOrCreateSession(userId, {snapshotOnly=false, oneShotWrites=false} = {}) {
   // Snapshot readers never inherit a legacy client with a background listener.
-  const key=JSON.stringify([userId,snapshotOnly === true]);
+  const key=JSON.stringify([userId,oneShotWrites ? "writer" : snapshotOnly === true]);
   if (sessions.has(key)) {
     const session = sessions.get(key);
     resetIdleTimer(key, session);
@@ -33,7 +33,8 @@ export async function getOrCreateSession(userId, {snapshotOnly=false} = {}) {
     username: creds.username,
     password: creds.password,
     defaultListName: creds.defaultListName,
-    snapshotOnly: snapshotOnly === true,
+    snapshotOnly: snapshotOnly === true || oneShotWrites === true,
+    oneShotWrites: oneShotWrites === true,
   });
 
   const session = { client, timer: null };
@@ -47,7 +48,7 @@ export async function getOrCreateSession(userId, {snapshotOnly=false} = {}) {
  * Evict a user's session immediately (e.g. after credential change).
  */
 export function evictSession(userId) {
-  for (const snapshotOnly of [false,true]) {
+  for (const snapshotOnly of [false,true,"writer"]) {
     const key=JSON.stringify([userId,snapshotOnly]);
     const session=sessions.get(key);
     if(session){clearTimeout(session.timer);sessions.delete(key);}
